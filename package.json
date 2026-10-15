@@ -1,10 +1,10 @@
 {
   "name": "dsh-risk-first-approval",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Return Auto review risks to the model before explicit, one-call human escalation",
   "type": "module",
   "main": "src/index.js",
-  "exports": { ".": "./src/index.js", "./client": "./src/client.js", "./package.json": "./package.json" },
+  "exports": { ".": "./src/index.js", "./client": "./src/client.js", "./reviewer": "./src/upstream-review.js", "./policy": "./src/policy.js", "./package.json": "./package.json" },
   "files": ["src", "cordis.patch.yml", "README.md", "LICENSE", "NOTICE.md"],
   "license": "MIT",
   "scripts": { "test": "node --test test/*.test.js", "check": "node --check src/index.js && node --check src/policy.js && node --check src/upstream-review.js && node --test test/*.test.js" },

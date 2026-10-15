@@ -4,3 +4,6 @@ _scratch/
 dist/
 *.tgz
 .DS_Store
+/smoke/reviewer.js
+/smoke/LICENSE
+/smoke/NOTICE.md

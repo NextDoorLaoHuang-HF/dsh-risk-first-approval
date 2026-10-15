@@ -296,6 +296,7 @@ function snapshotAutoReview(agent, exec) {
 	return deepFreeze({
 		provider: header.config.provider,
 		model: header.config.model,
+		...(header.config.reasoningEffort === undefined ? {} : { reasoningEffort: header.config.reasoningEffort }),
 		cwd,
 		projectInstructions,
 		history,
@@ -375,12 +376,38 @@ async function readDecision(stream) {
 	if (final?.type !== "text" || blocks.slice(0, -1).some((block) => block.type !== "reasoning")) throw new Error("auto-review: reviewer must emit zero or more reasoning blocks followed by exactly one text block");
 	return parseDecision(final.text);
 }
+/** Preserve the session's explicit setting; otherwise use exact-model metadata. */
+async function reviewerReasoningEffort(ctx, snapshot, signal) {
+	const isCodex61 = snapshot.provider === 'openai-codex' && snapshot.model === 'gpt-6.1-sol';
+	if (snapshot.reasoningEffort !== undefined) {
+		if (isCodex61 && ['off', 'none'].includes(snapshot.reasoningEffort)) throw new Error('auto-review: gpt-6.1-sol does not accept off/none reasoning; choose a supported session reasoning effort');
+		return snapshot.reasoningEffort;
+	}
+	const info = await ctx.llm.resolveModelInfo(snapshot.provider, snapshot.model, signal);
+	const reasoning = info.reasoning;
+	if (!reasoning) {
+		if (isCodex61) throw new Error('auto-review: reasoning metadata is missing for gpt-6.1-sol');
+		return undefined;
+	}
+	const supported = reasoning.efforts.map(effort => effort.id);
+	// This installed adapter advertises off -> none, but Codex 6.1 rejects
+	// that wire value. Correct only an implicit default, never user intent.
+	const defaultEffort = reasoning.defaultEffort;
+	if (isCodex61 && (defaultEffort === undefined || ['off', 'none'].includes(defaultEffort))) {
+		if (!supported.includes('low')) throw new Error('auto-review: no supported low reasoning effort for gpt-6.1-sol');
+		return 'low';
+	}
+	return defaultEffort ?? (supported.includes('low') ? 'low' : supported[0]);
+}
 /** Review one frozen pending action with the fixed policy and current LLM route. */
 async function classifyRisk(ctx, agent, exec, signal) {
 	const snapshot = snapshotAutoReview(agent, exec);
+	const reasoningEffort = await reviewerReasoningEffort(ctx, snapshot, signal);
+	if (signal?.aborted) throw signal.reason;
 	const options = deepFreeze({
 		provider: snapshot.provider,
 		model: snapshot.model,
+		...(reasoningEffort === undefined ? {} : { reasoningEffort }),
 		system: REVIEW_POLICY,
 		messages: [{
 			role: "user",
@@ -394,4 +421,4 @@ async function classifyRisk(ctx, agent, exec, signal) {
 	return readDecision(ctx.llm.stream(options));
 }
 
-export { classifyRisk, snapshotAutoReview, parseDecision, readDecision, REVIEW_POLICY };
+export { classifyRisk, snapshotAutoReview, parseDecision, readDecision, reviewerReasoningEffort, REVIEW_POLICY };

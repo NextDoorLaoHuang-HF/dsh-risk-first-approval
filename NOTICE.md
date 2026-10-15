@@ -6,6 +6,7 @@ Local modifications:
 
 - Extract only reviewer helpers; replace the original gate/lifecycle with this plugin's policy.
 - Omit the fixed `temperature: 0` option. The installed Codex adapter rejects that explicit parameter; provider defaults remain in effect. No model selection or credentials are changed.
+- Preserve the current session's explicit reasoning effort. If absent, use exact-model metadata; for Codex gpt-6.1-sol, replace only its known incompatible implicit off/none default with declared-supported low. Explicit unsupported user choices fail closed rather than being silently changed.
 - Require a nonempty, concrete reason on every risk denial, including high-risk denials.
 - Clarify that high risk forbids automatic authorization, but can be submitted to a human for one exact action.
 - Return risk reasons to the executing model, use expiring per-Agent intent tickets, and compose the original DSH approval dialog with both model explanations. No execution grant is stored.

@@ -1,0 +1,5 @@
+- insert:
+    - id: risk-first-reviewer-smoke
+      name: dsh-risk-first-reviewer-smoke-v012
+      config:
+        sessionId: session-18df521a-2e29-4832-a1d3-6c1d25f2cab5

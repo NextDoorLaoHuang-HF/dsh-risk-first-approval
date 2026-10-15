@@ -15,7 +15,7 @@ function nativeFixture() {
     ] } } },
     { seq: 4, type: 'tool/call', data: { turn: 1, step: 1, callId: 'c1', name: 'bash', arguments: JSON.stringify(args) } },
   ];
-  const header = { config: { provider: 'openai-codex', model: 'gpt-6.1-sol' }, tools: [schema] };
+  const header = { config: { provider: 'openai-codex', model: 'gpt-6.1-sol', reasoningEffort: 'high' }, tools: [schema] };
   const agent = { session: { header: { cwd: '/project' }, surface: { nodes: [2, 3] },
     snapshotEvents: () => events, requestHeader: () => header, isOwnSeq: () => true } };
   const exec = { agent, name: 'bash', arguments: args, callId: 'c1', rootCallId: 'c1', signal: new AbortController().signal };
@@ -73,10 +73,58 @@ test('reviewer request omits unsupported temperature, retains current model, and
   const result = await classifyRisk(ctx, f.agent, f.exec, f.exec.signal);
   assert.equal(result.risk, 'high'); assert.equal(captured.provider, 'openai-codex');
   assert.equal(Object.hasOwn(captured, 'temperature'), false);
+  assert.equal(captured.reasoningEffort, 'high');
   assert.ok(Object.isFrozen(captured)); assert.match(captured.system, /Every denial MUST include/);
   assert.match(captured.system, /human may explicitly approve/);
   assert.match(captured.messages[0].content[0].text, /PENDING_ACTION/);
   assert.equal(captured.system, REVIEW_POLICY);
+});
+async function captureReview(config, reasoning) {
+  const f = nativeFixture(); Object.assign(f.header.config, config);
+  let captured, metadataCalls = 0;
+  const ctx = { llm: {
+    async resolveModelInfo(provider, model, signal) {
+      metadataCalls++; assert.equal(provider, f.header.config.provider); assert.equal(model, f.header.config.model);
+      assert.equal(signal, f.exec.signal); return { reasoning };
+    },
+    stream(options) { captured = options; return stream('{"risk":"low","decision":"allow"}'); },
+  } };
+  await classifyRisk(ctx, f.agent, f.exec, f.exec.signal);
+  return { captured, metadataCalls };
+}
+test('Codex implicit off default becomes supported low instead of wire none', async () => {
+  const result = await captureReview({ reasoningEffort: undefined }, {
+    defaultEffort: 'off', efforts: ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'].map(id => ({ id })),
+  });
+  assert.equal(result.captured.reasoningEffort, 'low'); assert.equal(result.metadataCalls, 1);
+  assert.equal(Object.hasOwn(result.captured, 'temperature'), false);
+});
+test('explicit current session effort is preserved without model-default lookup', async () => {
+  const result = await captureReview({ reasoningEffort: 'xhigh' }, undefined);
+  assert.equal(result.captured.reasoningEffort, 'xhigh'); assert.equal(result.metadataCalls, 0);
+});
+test('explicit unsupported off is not silently clamped', async () => {
+  await assert.rejects(captureReview({ reasoningEffort: 'off' }, undefined), /does not accept off\/none/);
+});
+test('Codex missing reasoning metadata fails before streaming', async () => {
+  await assert.rejects(captureReview({ reasoningEffort: undefined }, undefined), /reasoning metadata is missing/);
+});
+test('Codex low fallback is used only when the model declares it', async () => {
+  await assert.rejects(captureReview({ reasoningEffort: undefined }, { defaultEffort: 'off', efforts: [{ id: 'medium' }] }), /no supported low/);
+});
+test('other providers retain a legitimate off default', async () => {
+  const result = await captureReview({ provider: 'other', model: 'a', reasoningEffort: undefined }, {
+    defaultEffort: 'off', efforts: [{ id: 'off' }, { id: 'high' }],
+  });
+  assert.equal(result.captured.reasoningEffort, 'off');
+});
+test('models without reasoning do not receive an effort parameter', async () => {
+  const result = await captureReview({ provider: 'other', model: 'plain', reasoningEffort: undefined }, undefined);
+  assert.equal(Object.hasOwn(result.captured, 'reasoningEffort'), false);
+});
+test('valid model default is retained for Codex when supplied', async () => {
+  const result = await captureReview({ reasoningEffort: undefined }, { defaultEffort: 'medium', efforts: [{ id: 'medium' }] });
+  assert.equal(result.captured.reasoningEffort, 'medium');
 });
 test('technical terminal errors remain technical errors', async () => {
   await assert.rejects(readDecision(stream('', { kind: 'error', failure: { code: 'PROVIDER_FAILURE', message: 'Offline' } })), /PROVIDER_FAILURE: Offline/);

@@ -21,7 +21,10 @@ for (const path of paths) {
   sessions.push({ id, preset, approval, sandbox });
 }
 console.log(JSON.stringify({ pid: Number(pid), sessions }, null, 2));
-if (sessions.some(s => s.preset === 'auto' || !s.preset)) {
+// Confined child sessions can omit preset events; their sandbox proves they
+// cannot match Auto (which requires danger-full-access). Unknown unconfined
+// sessions still block replacement.
+if (sessions.some(s => s.preset === 'auto' || (!s.preset && !['read-only', 'workspace-write'].includes(s.sandbox)))) {
   throw new Error('Do not hot-replace Auto: at least one live session is Auto or unknown. Leave Auto in those sessions before activation.');
 }
 console.log('PASS: no live Auto sessions; replacement will not downgrade an existing Auto session.');

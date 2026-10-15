@@ -1,6 +1,12 @@
 # DSH Risk-first Approval
 
-独立、可移除的 Auto 审批插件，适配 DSH `0.2.0-rc.2`。
+独立、可移除的 Auto 审批插件，当前插件版本 `0.1.2`，适配 DSH `0.2.0-rc.2`。
+
+## Codex 审核兼容修复
+
+审核请求不再强制传入 `temperature`。思考档位优先沿用当前会话；未设置时读取模型能力信息。对于已确认不接受 `none` 的 Codex `gpt-6.1-sol`，只将隐式的 off/none 默认值改为该模型声明支持的 `low`；不会修改会话设置或静默替换显式选择。
+
+0.1.2 已通过真实 Codex 审核请求验证：会话 `high` 与隐式回退 `low` 均得到 `low + allow` 的有效审核结果。**从已加载的旧插件版本升级后，请重启一次 DSH 再启用 Auto**；插件管理器对现有包升级会报告 `restart-required`，不要只凭开关重新启用就认定所有模块缓存已更新。
 
 ## 流程
 
@@ -47,7 +53,7 @@
 推荐通过 DSH 插件管理器安装打包产物。CLI 等效操作：
 
 ```sh
-dsh plugin --profile desktop add /absolute/path/to/dsh-risk-first-approval-0.1.1.tgz
+dsh plugin --profile desktop add /absolute/path/to/dsh-risk-first-approval-0.1.2.tgz
 ```
 
 安装后刷新现有 GUI。在会话权限选择器中由用户选择 **Auto review** 后，本流程生效。原来的 Full access、workspace-write 等模式不受本插件的审核流程影响。
