@@ -1,0 +1,8 @@
+# Patch names are selectors, not module replacements. Disable the stock row
+# and contribute a distinct row; removing this bundle restores the stock row.
+- id: auto-review
+  name: '@deepseek-ai/dsh-experimental-auto-review'
+  disabled: true
+- insert:
+    - id: risk-first-auto-review
+      name: dsh-risk-first-approval
