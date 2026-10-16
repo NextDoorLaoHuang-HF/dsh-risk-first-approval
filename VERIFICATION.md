@@ -1,6 +1,28 @@
 # 验证记录
 
-验证日期：2026-10-15；最新插件版本：0.1.2；DSH 版本：0.2.0-rc.2。
+验证日期：2026-10-15 至 2026-10-16；最新插件版本：0.1.2；DSH 版本：0.2.0-rc.2。
+
+## 2026-10-16 免重启热更新接线与实测
+
+目标：改插件源码不重启 DSH。方案是稳定外壳 + 可热替换引擎的拆分：
+
+- [hot/guard/index.js](hot/guard/index.js)（稳定外壳，不在监听目录内）持有 Auto owner 身份、pre-execute 拦截、工具注册、提示词段落和 lease 校验；通过 `ctx.get('riskFirstHotEngine')` 按需查找引擎，不做静态 inject，避免引擎重载时外壳被连带处置。
+- [src/hot-engine.js](src/hot-engine.js)（被监听目录内）持有审核策略与 reviewer；重载时先 quiesce（停止接受新操作、等待在途操作 settle），再由 HMR 替换模块。
+- 外壳在引擎不可用或引擎实例在审批间隙被替换时**拒绝执行**（fail-closed），不会退回 Full access；旧引擎代次上获得的人工批准不会授权新代次执行（lease 绑定引擎实例，`ctx.tools.guard` 在 dispatch 前复核）。
+- dev bundle [dev/cordis.patch.yml](dev/cordis.patch.yml)：禁用打包条目 `risk-first-auto-review`（保留为回滚 fallback），配置 `hmr` 只监听本插件 `src/`，插入外壳与引擎两个条目。安装在桌面 profile，见 profile `package.json` 的 `dsh-risk-first-approval-dev`。
+
+实测（pid 96108，全程未重启；诊断流见 `_scratch/hmr-state.json`）：
+
+1. 修改 `src/hot-engine.js` 的 BUILD 常量（hot-a → hot-b），100 ms 防抖后观察到 `engine-stopping` → `engine-ready`，pid 不变——**模块替换在不重启进程的情况下生效**。
+2. 同时发现诊断竞态：`ctx.get` 默认 strict，会隐藏 fiber 尚未进入 active 状态的服务提供者，导致 `engine-ready` 快照误报 `engineReady: false`。这也解释了昨晚重启后状态文件只有 `guard-ready` 一条——引擎实际已运行，只是就绪通知在外壳可见性建立前被丢弃。引擎改为等自身 fiber settle 后再上报就绪，并短暂重试等待外壳可见。
+3. 二次修改（hot-b → hot-c，含上述修复）后观察到 `engine-ready | engineReady: true | build: risk-first-0.1.2-hot-c | 新 generation`，pid 不变——**热更新链路与诊断均验证通过**。
+4. 改动后 78 项测试全部通过（含 hot-guard 的重载空档拒绝、跨代次批准不授权等用例）。
+
+注意：
+
+- 外壳（`hot/guard/`）刻意不在监听目录内；修改外壳代码仍需重启 DSH 才生效。
+- 重载窗口内 Auto 调用会被拒绝并要求重试，这是预期 fail-closed 行为，不是故障。
+- 当前会话为 Full access / never，热更新期间无存活 Auto 会话；真实 GUI 审批弹窗仍未验收。
 
 ## 0.1.2 真实模型兼容验证
 

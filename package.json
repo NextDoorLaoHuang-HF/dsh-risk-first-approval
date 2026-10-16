@@ -4,28 +4,52 @@
   "description": "Return Auto review risks to the model before explicit, one-call human escalation",
   "type": "module",
   "main": "src/index.js",
-  "exports": { ".": "./src/index.js", "./client": "./src/client.js", "./reviewer": "./src/upstream-review.js", "./policy": "./src/policy.js", "./package.json": "./package.json" },
-  "files": ["src", "cordis.patch.yml", "README.md", "LICENSE", "NOTICE.md"],
+  "exports": {
+    ".": "./src/index.js",
+    "./client": "./src/client.js",
+    "./reviewer": "./src/upstream-review.js",
+    "./policy": "./src/policy.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE",
+    "NOTICE.md"
+  ],
   "license": "MIT",
-  "scripts": { "test": "node --test test/*.test.js", "check": "node --check src/index.js && node --check src/policy.js && node --check src/upstream-review.js && node --test test/*.test.js" },
-  "dsh": { "bundle": { "patch": "./cordis.patch.yml" }, "client": { "platform": "web", "inject": [] } },
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "check": "node --check src/index.js && node --check src/policy.js && node --check src/upstream-review.js && node --test test/*.test.js"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": []
+    }
+  },
   "peerDependencies": {
     "@deepseek-ai/cordis": "~4.0.4",
     "@deepseek-ai/dsh-llm": "0.2.0-rc.2",
-    "@deepseek-ai/dsh-tools": "0.2.0-rc.2",
     "@deepseek-ai/dsh-permission-presets": "0.2.0-rc.2",
     "@deepseek-ai/dsh-session": "0.2.0-rc.2",
     "@deepseek-ai/dsh-system-prompt": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-tools": "0.2.0-rc.2",
     "@deepseek-ai/dsh-util-values": "0.2.0-rc.2"
   },
   "devDependencies": {
-    "@deepseek-ai/dsh-user-approval": "0.2.0-rc.2",
     "@deepseek-ai/cordis": "4.0.4",
     "@deepseek-ai/dsh-llm": "0.2.0-rc.2",
-    "@deepseek-ai/dsh-tools": "0.2.0-rc.2",
     "@deepseek-ai/dsh-permission-presets": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-sandbox-policy": "0.2.0-rc.2",
     "@deepseek-ai/dsh-session": "0.2.0-rc.2",
     "@deepseek-ai/dsh-system-prompt": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-tools": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-user-approval": "0.2.0-rc.2",
     "@deepseek-ai/dsh-util-values": "0.2.0-rc.2"
   }
 }

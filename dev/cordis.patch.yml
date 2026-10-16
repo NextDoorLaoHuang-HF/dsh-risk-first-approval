@@ -1,0 +1,15 @@
+# Preserve the packaged bundle as a fallback, but use exactly one Auto owner.
+- id: risk-first-auto-review
+  name: dsh-risk-first-approval
+  disabled: true
+# Watch ONLY this plugin's engine sources. Never watch the app or the workspace.
+- id: hmr
+  name: '@deepseek-ai/dsh-hmr'
+  config:
+    root:
+      - /Users/huangweihao/workspace/05.projects/dsh-risk-first-approval/src
+- insert:
+    - id: risk-first-stable-guard
+      name: dsh-risk-first-approval-dev
+    - id: risk-first-hot-engine
+      name: /Users/huangweihao/workspace/05.projects/dsh-risk-first-approval/src/hot-engine.js

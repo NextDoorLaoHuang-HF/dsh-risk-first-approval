@@ -17,6 +17,9 @@ importers:
       '@deepseek-ai/dsh-permission-presets':
         specifier: 0.2.0-rc.2
         version: 0.2.0-rc.2(02d11002f028287225a54630137b7020)
+      '@deepseek-ai/dsh-sandbox-policy':
+        specifier: 0.2.0-rc.2
+        version: 0.2.0-rc.2(86f6fd7d6eb5d5ef0468bcbf88da8d4d)
       '@deepseek-ai/dsh-session':
         specifier: 0.2.0-rc.2
         version: 0.2.0-rc.2(@deepseek-ai/cordis@4.0.4)(@deepseek-ai/dsh-scope@0.2.0-rc.2(@deepseek-ai/cordis@4.0.4)(@deepseek-ai/dsh-invariants@0.2.0-rc.2(@deepseek-ai/cordis@4.0.4)))

@@ -8,6 +8,15 @@
 
 0.1.2 已通过真实 Codex 审核请求验证：会话 `high` 与隐式回退 `low` 均得到 `low + allow` 的有效审核结果。**从已加载的旧插件版本升级后，请重启一次 DSH 再启用 Auto**；插件管理器对现有包升级会报告 `restart-required`，不要只凭开关重新启用就认定所有模块缓存已更新。
 
+## 开发期免重启热更新
+
+桌面 profile 另装有 dev bundle `dsh-risk-first-approval-dev`（[dev/](dev/)），将 Auto 职责拆成两部分：
+
+- **稳定外壳** [hot/guard/index.js](hot/guard/index.js)：持有 Auto owner、pre-execute 拦截、工具注册和 lease 校验。不在监听目录内，修改它仍需重启 DSH。
+- **热替换引擎** [src/hot-engine.js](src/hot-engine.js)：审核策略与 reviewer。`hmr` 条目只监听本插件 `src/`；保存源文件约 100 ms 防抖后自动替换，**无需重启**。
+
+重载窗口内外壳拒绝 Auto 调用并要求重试（fail-closed，不会退回 Full access）；旧引擎代次获得的人工批准不授权新代次。引擎实例、代次和构建号实时写在 `_scratch/hmr-state.json` 供诊断。接线与实测记录见 [VERIFICATION.md](VERIFICATION.md) 的 2026-10-16 节。
+
 ## 流程
 
 1. 审批模型判定需要阻止自动执行时，不执行原调用、也不弹窗。将具体风险原因和待处理凭据返回执行模型。
