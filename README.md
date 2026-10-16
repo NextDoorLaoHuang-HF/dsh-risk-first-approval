@@ -1,6 +1,15 @@
 # DSH Risk-first Approval
 
-独立、可移除的 Auto 审批插件，当前插件版本 `0.1.2`，适配 DSH `0.2.0-rc.2`。
+独立、可移除的 Auto 审批插件，当前插件版本 `0.1.3`，适配 DSH `0.2.0-rc.2`。
+
+## 审核路由配置（0.1.3 新增）
+
+生产入口与热引擎均暴露三个 Config 字段（插件设置页可见，两处需保持一致）：
+
+- `reviewerProvider` / `reviewerModel`：审核请求的专用供应商与模型，必须成对配置。留空则沿用历史行为——审核跟随当前会话的路由（在 gpt-6.1-sol 会话中审核调用会消耗同一 OpenAI 5 小时窗口）。推荐配成便宜的通道，如 `zai-coding-cn` / `glm-5.3-flash`。
+- `reviewerReasoningEffort`：审核请求的固定推理档位（如 `low`）。留空则按目标模型自动解析（沿用会话路由时保留会话显式档位；gpt-6.1-sol 的隐式 off/none 仍会被纠正为 `low`）。配置的档位会先对照模型能力校验，不被支持时审核以明确报错失败关闭，不会发送请求。
+
+注意：当前桌面 profile 同时装有 dev bundle（guard + 热引擎）时，生效的是**热引擎行**（`risk-first-hot-engine`）上的配置；生产行的配置仅在卸载 dev bundle 后生效。
 
 ## Codex 审核兼容修复
 

@@ -27,7 +27,7 @@ function validDecision(value) {
 }
 
 /** The only stored authority is a request to ASK, never an execution grant. */
-export function createRiskFirstPolicy(ctx, classify, { now = Date.now, uuid = randomUUID } = {}) {
+export function createRiskFirstPolicy(ctx, classify, { now = Date.now, uuid = randomUUID, reviewer } = {}) {
   let sessions = new WeakMap();
   const lifecycle = new AbortController();
   const isAuto = agent => ctx.permissionPresets.current(agent.session) === 'auto';
@@ -133,7 +133,7 @@ export function createRiskFirstPolicy(ctx, classify, { now = Date.now, uuid = ra
         intent = record;
         entries.delete(record.id); // Atomically consume before the first await.
       }
-      review = await classify(ctx, agent, exec, signal);
+      review = await classify(ctx, agent, exec, signal, reviewer);
       if (!validDecision(review)) throw new Error('Invalid reviewer risk/decision combination');
     } catch (error) {
       if (signal.aborted) return { kind: 'cancel' };

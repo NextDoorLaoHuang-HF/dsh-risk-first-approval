@@ -399,14 +399,31 @@ async function reviewerReasoningEffort(ctx, snapshot, signal) {
 	}
 	return defaultEffort ?? (supported.includes('low') ? 'low' : supported[0]);
 }
-/** Review one frozen pending action with the fixed policy and current LLM route. */
-async function classifyRisk(ctx, agent, exec, signal) {
+/** Review one frozen pending action with the fixed policy and the effective LLM route. */
+async function classifyRisk(ctx, agent, exec, signal, route) {
+	if (route !== undefined && (typeof route.provider !== "string" || typeof route.model !== "string" || route.provider.length === 0 || route.model.length === 0)) {
+		throw new Error("auto-review: the configured reviewer route is incomplete");
+	}
 	const snapshot = snapshotAutoReview(agent, exec);
-	const reasoningEffort = await reviewerReasoningEffort(ctx, snapshot, signal);
+	const provider = route?.provider ?? snapshot.provider;
+	const model = route?.model ?? snapshot.model;
+	// A dedicated route never inherits the session's effort choice: that choice
+	// was made for the session model. The session hint applies only when the
+	// review follows the session route, exactly as before.
+	let effortHint = route === undefined ? snapshot.reasoningEffort : undefined;
+	if (route?.reasoningEffort !== undefined) {
+		const info = await ctx.llm.resolveModelInfo(provider, model, signal);
+		const offered = info.reasoning?.efforts?.map(effort => effort.id);
+		if (offered !== undefined && offered.length > 0 && !offered.includes(route.reasoningEffort)) {
+			throw new Error(`auto-review: reviewer route ${provider}/${model} does not offer reasoning effort "${route.reasoningEffort}"; offered: ${offered.join(", ")}`);
+		}
+		effortHint = route.reasoningEffort;
+	}
+	const reasoningEffort = await reviewerReasoningEffort(ctx, { provider, model, reasoningEffort: effortHint }, signal);
 	if (signal?.aborted) throw signal.reason;
 	const options = deepFreeze({
-		provider: snapshot.provider,
-		model: snapshot.model,
+		provider,
+		model,
 		...(reasoningEffort === undefined ? {} : { reasoningEffort }),
 		system: REVIEW_POLICY,
 		messages: [{

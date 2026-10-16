@@ -1,15 +1,17 @@
 import { randomUUID } from 'node:crypto';
 import { classifyRisk } from './upstream-review.js';
 import { createRiskFirstPolicy } from './policy.js';
+import { ReviewerRouteConfig, resolveReviewerRoute } from './reviewer-route.js';
 
-export const BUILD = 'risk-first-0.1.2-hot-c';
+export const BUILD = 'risk-first-0.1.3-hot-a';
+export const Config = ReviewerRouteConfig;
 export const name = 'risk-first-hot-engine';
 export const inject = ['approval', 'llm', 'permissionPresets', 'tools'];
 
 // No Auto contribution, tool registration, or session-mode writer lives here.
 // This module and its policy/reviewer dependencies may be replaced independently.
-export function apply(ctx) {
-  const policy = createRiskFirstPolicy(ctx, classifyRisk);
+export function apply(ctx, config = {}) {
+  const policy = createRiskFirstPolicy(ctx, classifyRisk, { reviewer: resolveReviewerRoute(config) });
   const active = new Set();
   let accepting = true;
   const notify = reason => ctx.get('riskFirstHotGuard')?.notify(reason);
