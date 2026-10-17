@@ -19,6 +19,8 @@ window.__ModuleLoader__.load({
       provider: 'Reviewer provider',
       model: 'Reviewer model',
       effort: 'Reviewer reasoning effort',
+      followSession: 'Follow session route',
+      chooseModel: 'Choose a model…',
       effortAuto: 'Automatic',
       providerHelp: 'For example commandcode or zai-coding-cn. Must be set together with the model.',
       modelHelp: 'For example deepseek/deepseek-v4.1-flash. Prefer a metered channel so subscription caps cannot fail-close Auto mode.',
@@ -42,6 +44,8 @@ window.__ModuleLoader__.load({
       provider: '审核供应商',
       model: '审核模型',
       effort: '审核推理档位',
+      followSession: '跟随会话路由',
+      chooseModel: '选择模型…',
       effortAuto: '自动',
       providerHelp: '例如 commandcode 或 zai-coding-cn。必须与模型成对设置。',
       modelHelp: '例如 deepseek/deepseek-v4.1-flash。建议选择按量计费通道，订阅限额就不会让 Auto 模式整体失效。',
@@ -80,7 +84,7 @@ window.__ModuleLoader__.load({
     };
     const FIELDS = ['reviewerProvider', 'reviewerModel', 'reviewerReasoningEffort'];
 
-    function ReviewerRouteCard({ form, t }) {
+    function ReviewerRouteCard({ form, t, models }) {
       // The framework supplies t from the registered locale namespace; the
       // English dictionary is only a last-resort fallback for missing wiring.
       const translate = t || (key => en[key] ?? key);
@@ -91,6 +95,15 @@ window.__ModuleLoader__.load({
       const [dirty, setDirty] = useState(false);
       const [busy, setBusy] = useState(false);
       const [feedback, setFeedback] = useState('idle');
+      // One shared model catalog (providers, models, reasoning efforts) from
+      // the same directory service the chat model picker uses.
+      const [catalog, setCatalog] = useState(undefined);
+      useEffect(() => {
+        if (!models) return;
+        let live = true;
+        models.load().then(value => { if (live) setCatalog(value); }).catch(() => {});
+        return () => { live = false; };
+      }, [models]);
 
       useEffect(() => {
         if (!dirty && !busy) setDraft(snapshot.value);
@@ -109,6 +122,17 @@ window.__ModuleLoader__.load({
       const pairValid = (provider.length === 0) === (model.length === 0);
       const effortValid = provider.length > 0 || effort.length === 0;
       const valid = pairValid && effortValid;
+
+      // Dropdown sources from the live catalog; a configured value that is
+      // absent from the catalog stays selectable so nothing silently resets.
+      const groups = catalog?.groups ?? [];
+      const providerOptions = groups.map(group => group.id);
+      const groupModels = provider.length > 0
+        ? (groups.find(group => group.id === provider)?.models ?? []).map(entry => entry.id)
+        : [];
+      const reasoning = provider && model && models ? models.reasoningFor({ provider, model }) : undefined;
+      const effortOptions = reasoning?.efforts?.map(entry => entry.id).filter(id => id && id !== 'off') ?? EFFORTS.filter(id => id !== '');
+      const withCurrent = (options, current) => (current && !options.includes(current) ? [...options, current] : options);
 
       const save = async () => {
         if (form === undefined || draft === undefined || !snapshot.writable || !valid) return;
@@ -148,20 +172,26 @@ window.__ModuleLoader__.load({
         draft === undefined ? null : h('div', { style: gridStyle, 'aria-disabled': !editable },
           h('label', { style: fieldStyle },
             h('span', { style: labelStyle }, translate('provider')),
-            h('input', {
+            h('select', {
               style: controlStyle, value: draft.reviewerProvider || '', disabled: !editable,
               'aria-invalid': String(!pairValid),
-              onChange: event => update('reviewerProvider', event.currentTarget.value),
-            }),
+              onChange: event => { update('reviewerProvider', event.currentTarget.value); if (event.currentTarget.value === '') update('reviewerModel', ''); },
+            },
+              h('option', { value: '' }, translate('followSession')),
+              withCurrent(providerOptions, provider).map(id => h('option', { key: id, value: id }, id)),
+            ),
             h('span', { style: helpStyle }, translate('providerHelp')),
           ),
           h('label', { style: fieldStyle },
             h('span', { style: labelStyle }, translate('model')),
-            h('input', {
-              style: controlStyle, value: draft.reviewerModel || '', disabled: !editable,
+            h('select', {
+              style: controlStyle, value: draft.reviewerModel || '', disabled: !editable || provider.length === 0,
               'aria-invalid': String(!pairValid),
               onChange: event => update('reviewerModel', event.currentTarget.value),
-            }),
+            },
+              h('option', { value: '' }, provider.length === 0 ? '—' : translate('chooseModel')),
+              withCurrent(groupModels, model).map(id => h('option', { key: id, value: id }, id)),
+            ),
             h('span', { style: helpStyle }, translate('modelHelp')),
           ),
           h('label', { style: fieldStyle },
@@ -172,7 +202,7 @@ window.__ModuleLoader__.load({
               onChange: event => update('reviewerReasoningEffort', event.currentTarget.value),
             },
               h('option', { value: '' }, translate('effortAuto')),
-              EFFORTS.filter(value => value !== '').map(value => h('option', { key: value, value }, value)),
+              withCurrent(effortOptions, effort).map(id => h('option', { key: id, value: id }, id)),
             ),
             h('span', { style: helpStyle }, translate('effortHelp')),
           ),
@@ -231,7 +261,7 @@ window.__ModuleLoader__.load({
           order: 31,
           label: () => ctx.locale.bind(NS)('title'),
           locale: NS,
-          inject: () => ({ form: resolveForm() }),
+          inject: () => ({ form: resolveForm(), models: ctx.modelDirectories }),
         }, ReviewerRouteCard));
       },
     };
