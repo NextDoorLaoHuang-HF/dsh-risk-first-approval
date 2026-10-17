@@ -255,7 +255,13 @@ window.__ModuleLoader__.load({
 
     return {
       name: 'risk-first-approval-client',
-      inject: ['slots', 'locale', 'configForms', 'remote'],
+      // `remote.session` is a dotted Remote namespace: cordis resolves it as
+      // its own inject key (the client runner declares
+      // `remote.dynamicCordisRunner` the same way), so it must be listed
+      // explicitly — declaring only `remote` lets `ctx.remote` through but
+      // `ctx.remote.session` throws
+      // `cannot get property "remote.session" without inject`.
+      inject: ['slots', 'locale', 'configForms', 'remote', 'remote.session'],
       apply(ctx) {
         // 1. Approval-dialog explanation paragraphs (unchanged behavior).
         ctx.effect(() => {

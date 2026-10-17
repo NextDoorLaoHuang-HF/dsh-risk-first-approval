@@ -17,6 +17,10 @@ test('client formatting preserves both reason paragraphs and removes only its ow
   // the browser loader provides the real implementation.
   const reactStub = { useState: () => {}, useEffect: () => {}, useCallback: () => {}, useSyncExternalStore: () => {}, createElement: () => {} };
   const client = module.factory(name => { assert.equal(name, 'react'); return reactStub; });
+  // The dotted Remote namespace must be declared itself: declaring only
+  // `remote` leaves `ctx.remote.session` throwing
+  // `cannot get property "remote.session" without inject` on cordis 4.0.5+.
+  assert.ok(client.inject.includes('remote.session'), 'inject declares the remote.session namespace');
   const contributed = [];
   const calls = [];
   const groups = [{

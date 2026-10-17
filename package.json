@@ -1,6 +1,6 @@
 {
   "name": "dsh-risk-first-approval",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "description": "Return Auto review risks to the model before explicit, one-call human escalation",
   "type": "module",
   "main": "src/index.js",
