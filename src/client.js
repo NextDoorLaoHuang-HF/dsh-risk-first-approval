@@ -96,12 +96,17 @@ window.__ModuleLoader__.load({
       const [busy, setBusy] = useState(false);
       const [feedback, setFeedback] = useState('idle');
       // One shared model catalog (providers, models, reasoning efforts) from
-      // the same directory service the chat model picker uses.
+      // the same directory service the chat model picker uses. The prop is
+      // ModelDirectoryResolver's `.catalog` (load/reasoningFor); feature-detect
+      // so a missing or reshaped service degrades to manual options, never a
+      // blank page.
       const [catalog, setCatalog] = useState(undefined);
       useEffect(() => {
-        if (!models) return;
+        if (!models || typeof models.load !== 'function') return;
         let live = true;
-        models.load().then(value => { if (live) setCatalog(value); }).catch(() => {});
+        try {
+          models.load().then(value => { if (live) setCatalog(value); }).catch(() => {});
+        } catch { /* catalog unavailable; dropdowns fall back to static options */ }
         return () => { live = false; };
       }, [models]);
 
@@ -130,7 +135,8 @@ window.__ModuleLoader__.load({
       const groupModels = provider.length > 0
         ? (groups.find(group => group.id === provider)?.models ?? []).map(entry => entry.id)
         : [];
-      const reasoning = provider && model && models ? models.reasoningFor({ provider, model }) : undefined;
+      const reasoning = provider && model && models && typeof models.reasoningFor === 'function'
+        ? models.reasoningFor({ provider, model }) : undefined;
       const effortOptions = reasoning?.efforts?.map(entry => entry.id).filter(id => id && id !== 'off') ?? EFFORTS.filter(id => id !== '');
       const withCurrent = (options, current) => (current && !options.includes(current) ? [...options, current] : options);
 
@@ -255,13 +261,21 @@ window.__ModuleLoader__.load({
           }
           return undefined;
         };
+        // ctx.modelDirectories is the resolver; the shared catalog with
+        // load()/reasoningFor() lives on its `.catalog` property.
+        const catalogOf = owner => {
+          try {
+            const catalog = owner.modelDirectories?.catalog;
+            return catalog && typeof catalog.load === 'function' ? catalog : undefined;
+          } catch { return undefined; }
+        };
         ctx.slots.inject('settings.plugins.tab', () => ctx.slots.register({
           name: 'settings.plugins.tab',
           id: 'risk-first-approval',
           order: 31,
           label: () => ctx.locale.bind(NS)('title'),
           locale: NS,
-          inject: () => ({ form: resolveForm(), models: ctx.modelDirectories }),
+          inject: () => ({ form: resolveForm(), models: catalogOf(ctx) }),
         }, ReviewerRouteCard));
       },
     };

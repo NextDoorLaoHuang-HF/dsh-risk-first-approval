@@ -18,7 +18,8 @@ test('client formatting preserves both reason paragraphs and removes only its ow
   const reactStub = { useState: () => {}, useEffect: () => {}, useCallback: () => {}, useSyncExternalStore: () => {}, createElement: () => {} };
   const client = module.factory(name => { assert.equal(name, 'react'); return reactStub; });
   const contributed = [];
-  const modelDirectories = { load: async () => ({ groups: [] }), reasoningFor: () => undefined };
+  const catalog = { load: async () => ({ groups: [] }), reasoningFor: () => undefined };
+  const modelDirectories = { catalog };
   client.apply({ effect(callback) { const d = callback(); if (typeof d === 'function') dispose = d; }, locale: { register() {} },
     configForms: { get() { return undefined; } },
     modelDirectories,
@@ -28,6 +29,7 @@ test('client formatting preserves both reason paragraphs and removes only its ow
   assert.match(style.textContent, /white-space: pre-wrap/);
   assert.equal(contributed.length, 1);
   assert.equal(contributed[0].id, 'risk-first-approval');
-  assert.equal(contributed[0].inject().models, modelDirectories);
+  // The card must receive the resolver's catalog, not the resolver itself.
+  assert.equal(contributed[0].inject().models, catalog);
   dispose(); assert.equal(style.removed, true);
 });
