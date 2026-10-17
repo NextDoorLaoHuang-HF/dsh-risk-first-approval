@@ -1,9 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import { classifyRisk } from './upstream-review.js';
 import { createRiskFirstPolicy } from './policy.js';
-import { ReviewerRouteConfig, resolveReviewerRoute } from './reviewer-route.js';
+import { ReviewerRouteConfig, readLiveConfig, resolveReviewerRoute } from './reviewer-route.js';
 
-export const BUILD = 'risk-first-0.1.3-hot-a';
+export const BUILD = 'risk-first-0.1.3-hot-b';
 export const Config = ReviewerRouteConfig;
 export const name = 'risk-first-hot-engine';
 export const inject = ['approval', 'llm', 'permissionPresets', 'tools'];
@@ -11,7 +11,14 @@ export const inject = ['approval', 'llm', 'permissionPresets', 'tools'];
 // No Auto contribution, tool registration, or session-mode writer lives here.
 // This module and its policy/reviewer dependencies may be replaced independently.
 export function apply(ctx, config = {}) {
-  const policy = createRiskFirstPolicy(ctx, classifyRisk, { reviewer: resolveReviewerRoute(config) });
+  // Resolve lazily so Settings edits reach the next review without a reload;
+  // Loader volatile refs update in place, plain values keep working too.
+  const reviewer = () => resolveReviewerRoute({
+    reviewerProvider: readLiveConfig(config.reviewerProvider),
+    reviewerModel: readLiveConfig(config.reviewerModel),
+    reviewerReasoningEffort: readLiveConfig(config.reviewerReasoningEffort),
+  });
+  const policy = createRiskFirstPolicy(ctx, classifyRisk, { reviewer });
   const active = new Set();
   let accepting = true;
   const notify = reason => ctx.get('riskFirstHotGuard')?.notify(reason);

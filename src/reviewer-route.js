@@ -7,12 +7,18 @@ import z from '@deepseek-ai/schemastery';
  */
 export const ReviewerRouteConfig = z.object({
   reviewerProvider: z.string().default('').description(
-    'Dedicated reviewer LLM provider id (for example zai-coding-cn). Empty follows each session route.'),
+    'Dedicated reviewer LLM provider id (for example zai-coding-cn). Empty follows each session route.').volatile(),
   reviewerModel: z.string().default('').description(
-    'Dedicated reviewer LLM model id (for example glm-5.3-flash). Must be set together with reviewerProvider.'),
+    'Dedicated reviewer LLM model id (for example glm-5.3-flash). Must be set together with reviewerProvider.').volatile(),
   reviewerReasoningEffort: z.string().default('').description(
-    'Fixed reviewer reasoning effort (for example low). Empty keeps the automatic effort choice. Requires reviewerProvider and reviewerModel.'),
+    'Fixed reviewer reasoning effort (for example low). Empty keeps the automatic effort choice. Requires reviewerProvider and reviewerModel.').volatile(),
 });
+
+/** Read the current snapshot of one volatile-or-plain config value. */
+export function readLiveConfig(value) {
+  if (typeof value === 'object' && value !== null && typeof value.get === 'function') return value.get();
+  return value;
+}
 
 /**
  * Validate the raw plugin config into one immutable reviewer route, or

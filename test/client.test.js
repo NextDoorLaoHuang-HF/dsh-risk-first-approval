@@ -13,9 +13,18 @@ test('client formatting preserves both reason paragraphs and removes only its ow
     document, window: { __ModuleLoader__: { load(value) { module = value; } } },
   });
   assert.equal(module.id, 'dsh-risk-first-approval');
-  module.factory().apply({ effect(callback) { dispose = callback(); } });
+  // The card half only needs the React hooks to exist for the formatting path;
+  // the browser loader provides the real implementation.
+  const reactStub = { useState: () => {}, useEffect: () => {}, useCallback: () => {}, useSyncExternalStore: () => {}, createElement: () => {} };
+  const client = module.factory(name => { assert.equal(name, 'react'); return reactStub; });
+  const contributed = [];
+  client.apply({ effect(callback) { const d = callback(); if (typeof d === 'function') dispose = d; }, locale: { register() {} },
+    configForms: { get() { return undefined; } },
+    slots: { inject(_slot, register) { contributed.push(register()); }, register: value => value } });
   assert.equal(style.dataset.plugin, 'dsh-risk-first-approval');
   assert.match(style.textContent, /\[data-approval-scroll\]/);
   assert.match(style.textContent, /white-space: pre-wrap/);
+  assert.equal(contributed.length, 1);
+  assert.equal(contributed[0].id, 'risk-first-approval');
   dispose(); assert.equal(style.removed, true);
 });

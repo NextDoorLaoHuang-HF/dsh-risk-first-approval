@@ -133,7 +133,12 @@ export function createRiskFirstPolicy(ctx, classify, { now = Date.now, uuid = ra
         intent = record;
         entries.delete(record.id); // Atomically consume before the first await.
       }
-      review = await classify(ctx, agent, exec, signal, reviewer);
+      // The reviewer may be a frozen route or a lazy resolver that reads the
+      // current volatile config; resolve per review so Settings edits apply
+      // without an engine reload. Resolution errors fail closed with their
+      // configuration message, like any other reviewer failure.
+      const route = typeof reviewer === 'function' ? reviewer() : reviewer;
+      review = await classify(ctx, agent, exec, signal, route);
       if (!validDecision(review)) throw new Error('Invalid reviewer risk/decision combination');
     } catch (error) {
       if (signal.aborted) return { kind: 'cancel' };
