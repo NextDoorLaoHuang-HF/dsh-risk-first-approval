@@ -95,11 +95,11 @@ window.__ModuleLoader__.load({
       const [dirty, setDirty] = useState(false);
       const [busy, setBusy] = useState(false);
       const [feedback, setFeedback] = useState('idle');
-      // One shared model catalog (providers, models, reasoning efforts) from
-      // the same directory service the chat model picker uses. The prop is
-      // ModelDirectoryResolver's `.catalog` (load/reasoningFor); feature-detect
-      // so a missing or reshaped service degrades to manual options, never a
-      // blank page.
+      // One shared model catalog (providers, models, reasoning efforts) served
+      // by the Host over the `remote` bridge — the same source the chat model
+      // picker and the Subagent settings card read. The prop exposes
+      // load()/reasoningFor(); feature-detect so a missing or reshaped source
+      // degrades to manual options, never a blank page.
       const [catalog, setCatalog] = useState(undefined);
       useEffect(() => {
         if (!models || typeof models.load !== 'function') return;
@@ -238,7 +238,7 @@ window.__ModuleLoader__.load({
 
     return {
       name: 'risk-first-approval-client',
-      inject: ['slots', 'locale', 'configForms'],
+      inject: ['slots', 'locale', 'configForms', 'remote'],
       apply(ctx) {
         // 1. Approval-dialog explanation paragraphs (unchanged behavior).
         ctx.effect(() => {
@@ -261,13 +261,39 @@ window.__ModuleLoader__.load({
           }
           return undefined;
         };
-        // ctx.modelDirectories is the resolver; the shared catalog with
-        // load()/reasoningFor() lives on its `.catalog` property.
-        const catalogOf = owner => {
-          try {
-            const catalog = owner.modelDirectories?.catalog;
-            return catalog && typeof catalog.load === 'function' ? catalog : undefined;
-          } catch { return undefined; }
+        // The dropdown catalog is served by the Host over the `remote` bridge
+        // (remote.session.modelCatalog) — the same source the shipped model
+        // picker and the Subagent settings card use. The session-scoped
+        // `modelDirectories` client service is unreachable from a dynamic
+        // plugin: the client guard only exposes services declared in `inject`,
+        // and that service is mounted by a core UI plugin outside this
+        // package's fiber. Cache mirrors ModelCatalogDirectory: reasoning
+        // metadata is keyed per route and refreshed on every successful load.
+        const reasoningRoutes = new Map();
+        const catalog = {
+          load() {
+            const session = ctx.remote?.session;
+            if (!session || typeof session.modelCatalog !== 'function') {
+              return Promise.reject(new Error('remote.session.modelCatalog unavailable'));
+            }
+            return session.modelCatalog().then(response => {
+              if (!response || response.ok !== true) {
+                const code = response?.error?.code ?? 'model-catalog';
+                const message = response?.error?.message ?? 'model catalog request failed';
+                throw new Error(`${code}: ${message}`);
+              }
+              reasoningRoutes.clear();
+              for (const group of response.value.groups) {
+                for (const model of group.models) {
+                  reasoningRoutes.set(JSON.stringify([group.id, model.id]), model.reasoning);
+                }
+              }
+              return response.value;
+            });
+          },
+          reasoningFor(selection) {
+            return reasoningRoutes.get(JSON.stringify([selection.provider, selection.model]));
+          },
         };
         ctx.slots.inject('settings.plugins.tab', () => ctx.slots.register({
           name: 'settings.plugins.tab',
@@ -275,7 +301,7 @@ window.__ModuleLoader__.load({
           order: 31,
           label: () => ctx.locale.bind(NS)('title'),
           locale: NS,
-          inject: () => ({ form: resolveForm(), models: catalogOf(ctx) }),
+          inject: () => ({ form: resolveForm(), models: catalog }),
         }, ReviewerRouteCard));
       },
     };

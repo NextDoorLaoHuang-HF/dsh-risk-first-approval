@@ -1,6 +1,6 @@
 # DSH Risk-first Approval
 
-独立、可移除的 Auto 审批插件，当前插件版本 `0.1.6`，适配 DSH `0.2.0-rc.2`。
+独立、可移除的 Auto 审批插件，当前插件版本 `0.1.7`，适配 DSH `0.2.0-rc.2`。
 
 ## 审核路由配置（0.1.3 新增，0.1.4 增加设置页卡片）
 
@@ -8,6 +8,8 @@
 
 - `reviewerProvider` / `reviewerModel`：审核请求的专用供应商与模型，必须成对配置。留空则沿用历史行为——审核跟随当前会话的路由（在 gpt-6.1-sol 会话中审核调用会消耗同一 OpenAI 5 小时窗口）。推荐配成便宜的通道，如 `commandcode` / `deepseek/deepseek-v4.1-flash`。
 - `reviewerReasoningEffort`：审核请求的固定推理档位（如 `low`）。留空则按目标模型自动解析（沿用会话路由时保留会话显式档位；gpt-6.1-sol 的隐式 off/none 仍会被纠正为 `low`）。配置的档位会先对照模型能力校验，不被支持时审核以明确报错失败关闭，不会发送请求。
+
+**0.1.7 修复**：卡片的供应商/模型/档位下拉改从 Host 的 `remote.session.modelCatalog()` 取目录（与会话输入框的模型选择器、Subagent 设置卡片同一数据源）。此前版本误用会话级客户端服务 `modelDirectories`——动态插件的守卫上下文不暴露未在 `inject` 声明的服务（读取即抛错被捕获），下拉因此只剩"跟随会话路由"一个选项。
 
 也可以不经 UI，直接在 Loader 行内 config（dev bundle 的 `dev/cordis.patch.yml`）配置同样的字段。注意：当前桌面 profile 同时装有 dev bundle（guard + 热引擎）时，生效的是**热引擎行**（`risk-first-hot-engine`）上的配置；生产行的配置仅在卸载 dev bundle 后生效。卡片会自动探测当前生效的行。
 
