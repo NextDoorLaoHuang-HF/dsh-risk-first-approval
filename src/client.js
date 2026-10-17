@@ -36,6 +36,8 @@ window.__ModuleLoader__.load({
       saving: 'Saving…',
       settingsSaved: 'Reviewer route saved.',
       settingsSaveFailed: 'The host refused the reviewer-route change.',
+      catalogErrorPrefix: 'Model catalog failed to load: ',
+      retry: 'Retry',
     };
 
     const zh = {
@@ -61,6 +63,8 @@ window.__ModuleLoader__.load({
       saving: '保存中…',
       settingsSaved: '审核路由已保存。',
       settingsSaveFailed: '主机拒绝了审核路由修改。',
+      catalogErrorPrefix: '模型目录加载失败：',
+      retry: '重试',
     };
 
     const sectionStyle = { display: 'flex', flexDirection: 'column', gap: 14, maxWidth: 720, color: 'var(--dsw-alias-label-primary)' };
@@ -76,6 +80,7 @@ window.__ModuleLoader__.load({
     const buttonStyle = { boxSizing: 'border-box', minHeight: 34, padding: '6px 14px', border: '1px solid var(--dsw-alias-border-l2)', borderRadius: 18, background: 'var(--dsw-alias-bg-layer-1)', color: 'var(--dsw-alias-label-primary)', font: 'inherit', fontSize: 13, cursor: 'pointer' };
     const primaryButtonStyle = { ...buttonStyle, borderColor: 'var(--dsw-alias-brand-primary)', background: 'var(--dsw-alias-brand-primary)', color: 'white' };
     const errorStyle = { ...bodyStyle, color: 'var(--dsw-alias-state-error-primary)' };
+    const retryButtonStyle = { marginLeft: 8, padding: '2px 10px', border: '1px solid var(--dsw-alias-border-l2)', borderRadius: 6, background: 'var(--dsw-alias-bg-layer-1)', color: 'var(--dsw-alias-label-primary)', font: 'inherit', fontSize: 12, cursor: 'pointer' };
     const successStyle = { ...bodyStyle, color: 'var(--dsw-alias-state-success-primary, #16825d)' };
 
     const UNAVAILABLE_SNAPSHOT = {
@@ -101,14 +106,22 @@ window.__ModuleLoader__.load({
       // load()/reasoningFor(); feature-detect so a missing or reshaped source
       // degrades to manual options, never a blank page.
       const [catalog, setCatalog] = useState(undefined);
+      const [catalogError, setCatalogError] = useState(undefined);
+      const [catalogAttempt, setCatalogAttempt] = useState(0);
       useEffect(() => {
         if (!models || typeof models.load !== 'function') return;
         let live = true;
+        setCatalogError(undefined);
         try {
-          models.load().then(value => { if (live) setCatalog(value); }).catch(() => {});
-        } catch { /* catalog unavailable; dropdowns fall back to static options */ }
+          models.load().then(
+            value => { if (live) setCatalog(value); },
+            error => { if (live) setCatalogError(error instanceof Error ? error.message : String(error)); },
+          );
+        } catch (error) {
+          if (live) setCatalogError(error instanceof Error ? error.message : String(error));
+        }
         return () => { live = false; };
-      }, [models]);
+      }, [models, catalogAttempt]);
 
       useEffect(() => {
         if (!dirty && !busy) setDraft(snapshot.value);
@@ -172,6 +185,10 @@ window.__ModuleLoader__.load({
       return h('section', { style: sectionStyle, 'aria-labelledby': 'risk-first-approval-card-title' },
         h('h3', { id: 'risk-first-approval-card-title', style: titleStyle }, translate('title')),
         h('p', { style: bodyStyle }, translate('intro')),
+        catalogError ? h('p', { style: errorStyle, role: 'alert' },
+          `${translate('catalogErrorPrefix')}${catalogError}`,
+          h('button', { type: 'button', style: retryButtonStyle, onClick: () => setCatalogAttempt(n => n + 1) }, translate('retry')),
+        ) : null,
         loading ? h('p', { style: bodyStyle, role: 'status' }, translate('settingsLoading')) : null,
         snapshot.status === 'unavailable' ? h('p', { style: errorStyle, role: 'alert' }, translate('settingsUnavailable')) : null,
         snapshot.status === 'ready' && !snapshot.writable ? h('p', { style: errorStyle, role: 'alert' }, translate('settingsReadOnly')) : null,
@@ -270,9 +287,23 @@ window.__ModuleLoader__.load({
         // package's fiber. Cache mirrors ModelCatalogDirectory: reasoning
         // metadata is keyed per route and refreshed on every successful load.
         const reasoningRoutes = new Map();
+        // Dual-path reach to the bridge: the declared ctx.remote seat first,
+        // then the guard's declaration-free ctx.get('remote') lookup. One of
+        // the two resolves on every runtime generation; whichever does,
+        // session.modelCatalog() answers the Host-generation catalog.
+        const sessionNamespace = () => {
+          try {
+            if (ctx.remote && ctx.remote.session) return ctx.remote.session;
+          } catch { /* fall through to ctx.get */ }
+          try {
+            const remote = typeof ctx.get === 'function' ? ctx.get('remote') : undefined;
+            if (remote && remote.session) return remote.session;
+          } catch { /* unavailable on this runtime */ }
+          return undefined;
+        };
         const catalog = {
           load() {
-            const session = ctx.remote?.session;
+            const session = sessionNamespace();
             if (!session || typeof session.modelCatalog !== 'function') {
               return Promise.reject(new Error('remote.session.modelCatalog unavailable'));
             }
@@ -281,6 +312,9 @@ window.__ModuleLoader__.load({
                 const code = response?.error?.code ?? 'model-catalog';
                 const message = response?.error?.message ?? 'model catalog request failed';
                 throw new Error(`${code}: ${message}`);
+              }
+              if (!response.value || !Array.isArray(response.value.groups)) {
+                throw new Error('model catalog response has no groups');
               }
               reasoningRoutes.clear();
               for (const group of response.value.groups) {
