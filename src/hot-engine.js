@@ -1,9 +1,23 @@
 import { randomUUID } from 'node:crypto';
+import { appendFileSync, mkdirSync } from 'node:fs';
+import { dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { classifyRisk } from './upstream-review.js';
 import { createRiskFirstPolicy } from './policy.js';
 import { ReviewerRouteConfig, readLiveConfig, resolveReviewerRoute } from './reviewer-route.js';
 
-export const BUILD = 'risk-first-0.1.3-hot-b';
+// TEMPORARY diagnosis probe (2026-10-17): one JSON line per gate/classify,
+// answering whether preset-realm tool executions reach the host-mounted
+// review engine at all, and with what agent binding. Remove after verdict.
+const PROBE_FILE = fileURLToPath(new URL('../_scratch/review-probe.log', import.meta.url));
+function probe(entry) {
+  try {
+    mkdirSync(dirname(PROBE_FILE), { recursive: true });
+    appendFileSync(PROBE_FILE, JSON.stringify({ ts: new Date().toISOString(), pid: process.pid, ...entry }) + '\n');
+  } catch { /* diagnostics must never break the engine */ }
+}
+
+export const BUILD = 'risk-first-0.1.3-hot-b-probe';
 export const Config = ReviewerRouteConfig;
 export const name = 'risk-first-hot-engine';
 export const inject = ['approval', 'llm', 'permissionPresets', 'tools'];
@@ -18,7 +32,13 @@ export function apply(ctx, config = {}) {
     reviewerModel: readLiveConfig(config.reviewerModel),
     reviewerReasoningEffort: readLiveConfig(config.reviewerReasoningEffort),
   });
-  const policy = createRiskFirstPolicy(ctx, classifyRisk, { reviewer });
+  const policy = createRiskFirstPolicy(ctx, (reviewCtx, agent, exec, signal, route) => {
+    probe({ event: 'classify', name: exec?.name, provider: route?.provider ?? null, model: route?.model ?? null, effort: route?.reasoningEffort ?? null, agentDefined: agent !== undefined, session: agent?.session?.id ?? null });
+    return classifyRisk(reviewCtx, agent, exec, signal, route).then(result => {
+      probe({ event: 'classify-result', name: exec?.name, decision: result?.decision ?? null, risk: result?.risk ?? null, reason: result?.reason ?? null });
+      return result;
+    });
+  }, { reviewer });
   const active = new Set();
   let accepting = true;
   const notify = reason => ctx.get('riskFirstHotGuard')?.notify(reason);
@@ -34,7 +54,13 @@ export function apply(ctx, config = {}) {
   const engine = {
     generation: randomUUID(), build: BUILD,
     get ready() { return accepting; },
-    gate: (exec, next) => tracked(() => policy.gate(exec, next)),
+    gate: (exec, next) => tracked(() => {
+      probe({ event: 'gate', name: exec?.name, agentDefined: exec?.agent !== undefined, session: exec?.agent?.session?.id ?? null, parent: exec?.parent ?? null });
+      return Promise.resolve(policy.gate(exec, next)).then(result => {
+        probe({ event: 'gate-result', name: exec?.name, kind: result?.kind ?? null });
+        return result;
+      });
+    }),
     request: (args, exec) => tracked(() => policy.tool.execute(args, exec)),
     quiesce,
   };
