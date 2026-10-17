@@ -1,6 +1,6 @@
 # DSH Risk-first Approval
 
-独立、可移除的 Auto 审批插件，当前插件版本 `0.1.9`，适配 DSH `0.2.1-rc.1`（peer 依赖改为 `^0.2.0-rc.2` 区间；0.1.7 及更早的精确版本钉会在 DSH 升级后使整个 patch 被 `incompatible-version` 拒载——行消失、卡片消失、stock auto-review 接管）。
+独立、可移除的 Auto 审批插件，当前插件版本 `0.1.10`，适配 DSH `0.2.1-rc.1`（peer 依赖改为 `^0.2.0-rc.2` 区间；0.1.7 及更早的精确版本钉会在 DSH 升级后使整个 patch 被 `incompatible-version` 拒载——行消失、卡片消失、stock auto-review 接管）。
 
 ## 审核路由配置（0.1.3 新增，0.1.4 增加设置页卡片）
 

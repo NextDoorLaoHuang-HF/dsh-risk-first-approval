@@ -292,21 +292,29 @@ window.__ModuleLoader__.load({
         // the two resolves on every runtime generation; whichever does,
         // session.modelCatalog() answers the Host-generation catalog.
         const sessionNamespace = () => {
+          const errors = [];
           try {
-            if (ctx.remote && ctx.remote.session) return ctx.remote.session;
-          } catch { /* fall through to ctx.get */ }
+            if (ctx.remote && ctx.remote.session) return { session: ctx.remote.session };
+            errors.push('ctx.remote resolved but has no session namespace');
+          } catch (error) {
+            errors.push(`ctx.remote: ${error instanceof Error ? error.message : String(error)}`);
+          }
           try {
             const remote = typeof ctx.get === 'function' ? ctx.get('remote') : undefined;
-            if (remote && remote.session) return remote.session;
-          } catch { /* unavailable on this runtime */ }
-          return undefined;
+            if (remote && remote.session) return { session: remote.session };
+            errors.push(`ctx.get('remote') → ${remote === undefined ? 'undefined' : 'no session namespace'}`);
+          } catch (error) {
+            errors.push(`ctx.get: ${error instanceof Error ? error.message : String(error)}`);
+          }
+          return { error: errors.join(' | ') };
         };
         const catalog = {
           load() {
-            const session = sessionNamespace();
-            if (!session || typeof session.modelCatalog !== 'function') {
-              return Promise.reject(new Error('remote.session.modelCatalog unavailable'));
+            const reached = sessionNamespace();
+            if (!reached.session || typeof reached.session.modelCatalog !== 'function') {
+              return Promise.reject(new Error(reached.error || 'remote.session.modelCatalog unavailable'));
             }
+            const session = reached.session;
             return session.modelCatalog().then(response => {
               if (!response || response.ok !== true) {
                 const code = response?.error?.code ?? 'model-catalog';
