@@ -13,3 +13,12 @@
       name: dsh-risk-first-approval-dev
     - id: risk-first-hot-engine
       name: /Users/huangweihao/workspace/05.projects/dsh-risk-first-approval/src/hot-engine.js
+# Dedicated reviewer route (0.1.3): Auto review no longer follows the
+# session's provider, whose weekly/monthly caps (e.g. zai until 2026-10-22)
+# fail-close every tool call in Auto mode. The metered DeepSeek flash channel
+# has no subscription windows. reviewerReasoningEffort stays empty (automatic).
+- id: risk-first-hot-engine
+  name: /Users/huangweihao/workspace/05.projects/dsh-risk-first-approval/src/hot-engine.js
+  config:
+    reviewerProvider: commandcode
+    reviewerModel: deepseek/deepseek-v4.1-flash
