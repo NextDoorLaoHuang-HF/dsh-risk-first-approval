@@ -2,6 +2,7 @@
 // See NOTICE.md. Snapshot retained; denial reason required; temperature omitted.
 import { BlockAssembler } from "@deepseek-ai/dsh-llm";
 import { deepFreeze } from "@deepseek-ai/dsh-util-values";
+import { ReviewerRequestError, withReviewerRetry } from './reviewer-retry.js';
 //#region lib/types/index.js
 /**
 * LLM-backed authorization gate for the current-session-only Auto permission
@@ -358,19 +359,21 @@ function parseDecision(text) {
 async function readDecision(stream) {
 	const assembler = new BlockAssembler();
 	let finished = false;
+	let requestFailure;
 	for await (const chunk of stream) {
 		if (finished) throw new Error("auto-review: reviewer emitted data after its terminal finish");
 		assembler.push(chunk);
 		if (chunk.type === "finish") {
 			finished = true;
 			if (chunk.reason.kind === "error" || chunk.reason.kind === "aborted") {
-				const { code, message } = chunk.reason.failure;
-				throw new Error(`auto-review: reviewer ended with ${chunk.reason.kind} ${code}: ${message}`);
-			}
-			if (chunk.reason.kind !== "stop") throw new Error(`auto-review: reviewer ended with ${chunk.reason.kind}`);
+				// Drain through completion before retrying: an iterator cleanup error
+				// or data after finish is not a transient provider failure.
+				requestFailure = new ReviewerRequestError(chunk.reason.kind, chunk.reason.failure);
+			} else if (chunk.reason.kind !== "stop") throw new Error(`auto-review: reviewer ended with ${chunk.reason.kind}`);
 		}
 	}
 	if (!finished) throw new Error("auto-review: reviewer emitted no terminal finish");
+	if (requestFailure) throw requestFailure;
 	const blocks = assembler.blocks();
 	const final = blocks.at(-1);
 	if (final?.type !== "text" || blocks.slice(0, -1).some((block) => block.type !== "reasoning")) throw new Error("auto-review: reviewer must emit zero or more reasoning blocks followed by exactly one text block");
@@ -435,7 +438,9 @@ async function classifyRisk(ctx, agent, exec, signal, route) {
 		}],
 		signal
 	});
-	return readDecision(ctx.llm.stream(options));
+	// Each attempt gets a fresh assembler but the identical frozen action/route.
+	// No failed partial output becomes history or an authorization decision.
+	return withReviewerRetry(() => readDecision(ctx.llm.stream(options)), { signal });
 }
 
 export { classifyRisk, snapshotAutoReview, parseDecision, readDecision, reviewerReasoningEffort, REVIEW_POLICY };

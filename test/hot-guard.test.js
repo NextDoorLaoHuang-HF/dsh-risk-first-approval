@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { setImmediate as nextTurn } from 'node:timers/promises';
 import { Context } from '@deepseek-ai/cordis';
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt';
 import ToolRuntime from '@deepseek-ai/dsh-tools';
@@ -43,7 +44,7 @@ async function fixture(t, options = {}) {
   if (!options.missingEngine) installEngine(options.gate);
   const guard = await load(Guard, { diagnostics: false });
   let serial = 0;
-  const run = (name = 'inert', args = {}) => {
+  const run = (name = 'inert', args = {}, signal = new AbortController().signal) => {
     const callId = `hot-${++serial}`;
     if (options.logReview) {
       session.append('step/start', { turn: 1, step: serial });
@@ -51,7 +52,7 @@ async function fixture(t, options = {}) {
       session.surface.nodes.push(message.seq);
       session.append('tool/call', { turn: 1, step: serial, callId, name, arguments: JSON.stringify(args) });
     }
-    return ctx.tools.execute({ name, arguments: args, agent, callId, signal: new AbortController().signal });
+    return ctx.tools.execute({ name, arguments: args, agent, callId, signal });
   };
   t.after(async () => { for (const f of fibers.reverse()) await f.dispose(); removeEngine?.(); });
   return { ctx, state, events, session, agent, guard, run, load, installEngine, removeEngine: () => { removeEngine?.(); removeEngine = undefined; } };
@@ -111,6 +112,81 @@ test('actual hot engine plus stable helper completes the risk-first approval flo
   assert.equal(arm.isError, false); assert.equal(arm.value.status, 'ready_for_approval');
   const approved = await f.run(); assert.equal(approved.isError, false); assert.equal(f.state.bodies, 1); assert.equal(f.state.asks, 1);
   assert.equal((await f.run()).isError, true); assert.equal(f.state.bodies, 1); assert.equal(f.state.asks, 1);
+});
+
+async function* retryAnswer() {
+  const text = '{"risk":"low","decision":"allow"}';
+  yield { type: 'block-start', index: 0, blockType: 'text' };
+  yield { type: 'text-delta', index: 0, text };
+  yield { type: 'block-end', index: 0, block: { type: 'text', text } };
+  yield { type: 'finish', reason: { kind: 'stop' } };
+}
+async function* retryTimeout() {
+  yield { type: 'finish', reason: { kind: 'error', failure: { code: 'TIMEOUT', message: 'Synthetic request timeout' } } };
+}
+
+test('real Tools + HotEngine recover two timeouts and execute the original body exactly once', async t => {
+  const f = await fixture(t, { missingEngine: true, logReview: true });
+  let requests = 0;
+  f.ctx.provide('llm', { stream() { return ++requests <= 2 ? retryTimeout() : retryAnswer(); } });
+  await f.load(HotEngine);
+  const result = await f.run();
+  assert.equal(result.isError, false); assert.equal(requests, 3);
+  assert.equal(f.state.bodies, 1); assert.equal(f.state.asks, 0);
+  assert.deepEqual(result.value, { count: 1 });
+  assert.doesNotMatch(JSON.stringify(result.content), /TIMEOUT|AUTO_REVIEW_FAILED/);
+});
+test('real Tools + HotEngine exhaustion fails closed without risk ticket or approval', async t => {
+  const f = await fixture(t, { missingEngine: true, logReview: true });
+  let requests = 0;
+  f.ctx.provide('llm', { stream() { requests++; return retryTimeout(); } });
+  await f.load(HotEngine);
+  const result = await f.run();
+  assert.equal(result.isError, true); assert.equal(result.error.info.code, 'AUTO_REVIEW_FAILED');
+  assert.match(result.error.message, /4 attempts; 3 retries/); assert.doesNotMatch(result.error.message, /risk_ticket=/);
+  assert.equal(requests, 4); assert.equal(f.state.bodies, 0); assert.equal(f.state.asks, 0);
+});
+test('real HotEngine cancels during retry backoff without another request or body', async t => {
+  const f = await fixture(t, { missingEngine: true, logReview: true });
+  const controller = new AbortController(), entered = Promise.withResolvers(); let requests = 0;
+  f.ctx.provide('llm', { stream() { requests++; entered.resolve(); return retryTimeout(); } });
+  await f.load(HotEngine);
+  const pending = f.run('inert', {}, controller.signal);
+  await entered.promise; await nextTurn(); controller.abort(new Error('test cancelled'));
+  const result = await pending;
+  assert.equal(result.isError, true); assert.equal(requests, 1);
+  assert.equal(f.state.bodies, 0); assert.equal(f.state.asks, 0);
+});
+test('real HotEngine disposal drains backoff; a replacement keeps guard and cannot revive the old call', async t => {
+  const f = await fixture(t, { missingEngine: true, logReview: true });
+  const entered = Promise.withResolvers(); let requests = 0, recovered = false;
+  f.ctx.provide('llm', { stream() { requests++; entered.resolve(); return recovered ? retryAnswer() : retryTimeout(); } });
+  const engineFiber = await f.load(HotEngine);
+  const oldEngine = f.ctx.get('riskFirstHotEngine'), guardId = f.ctx.get('riskFirstHotGuard').guardId;
+  const pending = f.run(); await entered.promise; await nextTurn();
+  await engineFiber.dispose();
+  assert.equal((await pending).isError, true); assert.equal(requests, 1);
+  assert.equal(oldEngine.ready, false); assert.equal(f.state.bodies, 0);
+  recovered = true; await f.load(HotEngine);
+  assert.notEqual(f.ctx.get('riskFirstHotEngine').generation, oldEngine.generation);
+  assert.equal(f.ctx.get('riskFirstHotGuard').guardId, guardId);
+  assert.equal((await f.run()).isError, false); assert.equal(requests, 2);
+  assert.equal(f.state.bodies, 1); assert.equal(f.state.asks, 0); assert.equal(f.state.mode, 'auto');
+});
+test('context changes during a real reviewer retry prevent stale execution', async t => {
+  const f = await fixture(t, { missingEngine: true, logReview: true });
+  let requests = 0;
+  f.ctx.provide('llm', { stream() {
+    if (++requests === 1) {
+      f.session.append('user/message', { source: { kind: 'user', rpcId: 'changed-task' }, content: [{ type: 'text', text: 'Stop the previous action' }] });
+      return retryTimeout();
+    }
+    return retryAnswer();
+  } });
+  await f.load(HotEngine);
+  const result = await f.run();
+  assert.equal(result.isError, true); assert.equal(result.error.info.code, 'AUTO_REVIEW_CONTEXT_CHANGED');
+  assert.equal(requests, 2); assert.equal(f.state.bodies, 0); assert.equal(f.state.asks, 0);
 });
 
 test('actual owner removal confines Auto rather than enabling Full access and preserves never', async t => {

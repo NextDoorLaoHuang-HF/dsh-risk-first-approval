@@ -1,6 +1,6 @@
 import { readFile, writeFile, access } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-for (const [source, target] of [['src/upstream-review.js', 'smoke/reviewer.js'], ['LICENSE', 'smoke/LICENSE'], ['NOTICE.md', 'smoke/NOTICE.md']]) {
+for (const [source, target] of [['src/upstream-review.js', 'smoke/reviewer.js'], ['src/reviewer-retry.js', 'smoke/reviewer-retry.js'], ['LICENSE', 'smoke/LICENSE'], ['NOTICE.md', 'smoke/NOTICE.md']]) {
   const root = new URL('../', import.meta.url);
   const input = new URL(source, root), output = new URL(target, root);
   const content = await readFile(input);

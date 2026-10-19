@@ -5,5 +5,6 @@ dist/
 *.tgz
 .DS_Store
 /smoke/reviewer.js
+/smoke/reviewer-retry.js
 /smoke/LICENSE
 /smoke/NOTICE.md
