@@ -1,12 +1,24 @@
 # DSH Risk-first Approval
 
-独立、可移除的 Auto 审批插件，当前插件版本 `0.1.11`，适配 DSH `0.2.1-rc.1`（peer 依赖改为 `^0.2.0-rc.2` 区间；0.1.7 及更早的精确版本钉会在 DSH 升级后使整个 patch 被 `incompatible-version` 拒载——行消失、卡片消失、stock auto-review 接管）。
+独立、可移除的 Auto 审批插件，当前源码版本 `0.1.12`，当前桌面 DSH `0.2.1-rc.2`（peer 依赖改为 `^0.2.0-rc.2` 区间；0.1.7 及更早的精确版本钉会在 DSH 升级后使整个 patch 被 `incompatible-version` 拒载——行消失、卡片消失、stock auto-review 接管）。
+
+## 审查请求瞬时故障恢复（0.1.12）
+
+直接 `ctx.llm.stream()` 不经过 DSH 主循环的重试插件；因此本插件在 reviewer 请求内部恢复瞬时故障，而不是把第一次网络错误立即交给执行模型。
+
+- 首次请求之外**最多重试 3 次**；本地退避为 500 / 1000 / 2000 ms，带 ±20% 抖动。每次使用同一冻结的指令、动作和路由，但新建流与解析器，失败的部分输出全部丢弃。
+- 仅重试结构化 `error` finish 中的 `TIMEOUT`、`TRANSPORT`、`SERVER`、`RATE_LIMIT`、`EMPTY_RESPONSE`。真实风险拒绝、`aborted` finish、鉴权/额度/配置错误、坏 JSON/协议错误，以及任意 middleware/cleanup 抛出异常都不盲重试；不凭报错文案猜故障。
+- 有效 `providerRetryAfterMs` 在 10 秒内时遵守该等待值；超过上限则失败关闭，不提前请求。无效值回退到本地退避。
+- 只重试审核，**不重试原工具体**。取消、引擎卸载会清理等待并停止；后续仍检查权限、指令、工具及工作目录是否变化。不会因重试刷新审批意图 TTL 或获得执行授权。
+- 耗尽后才返回包含请求次数的 `AUTO_REVIEW_FAILED`，不发风险凭据，也不转人工绕过。单次请求超时仍由 adapter/调用信号决定：通常约 3.5 秒是额外退避，不是整个审核的总时限；不是无限重试。
+
+当前桌面已通过原有 watcher 热加载 `risk-first-0.1.12-hot-retry`，无需重启。禁用状态的打包 fallback 仍保留 `0.1.11`，未为本次修复重装/重启 Auto owner。验收范围及限制见 [VERIFICATION.md](VERIFICATION.md)。
 
 ## 审核路由配置（0.1.3 新增，0.1.4 增加设置页卡片）
 
 设置 → 内置插件 → **Risk-first 审批** 卡片（0.1.4 起）可直接编辑三个字段，保存后下一次审核即生效，无需重启：
 
-- `reviewerProvider` / `reviewerModel`：审核请求的专用供应商与模型，必须成对配置。留空则沿用历史行为——审核跟随当前会话的路由（在 gpt-6.1-sol 会话中审核调用会消耗同一 OpenAI 5 小时窗口）。推荐配成便宜的通道，如 `commandcode` / `deepseek/deepseek-v4.1-flash`。
+- `reviewerProvider` / `reviewerModel`：审核请求的专用供应商与模型，必须成对配置。留空则沿用历史行为——审核跟随当前会话的路由（在 gpt-6.1-sol 会话中审核调用会消耗同一 OpenAI 5 小时窗口）。推荐配成便宜的通道，如 `amr-link` / `deepseek-v4.1-flash`（原 Command Code 已退订；此示例不修改当前运行时配置）。
 - `reviewerReasoningEffort`：审核请求的固定推理档位（如 `low`）。留空则按目标模型自动解析（沿用会话路由时保留会话显式档位；gpt-6.1-sol 的隐式 off/none 仍会被纠正为 `low`）。配置的档位会先对照模型能力校验，不被支持时审核以明确报错失败关闭，不会发送请求。
 
 **0.1.7 修复**：卡片的供应商/模型/档位下拉改从 Host 的 `remote.session.modelCatalog()` 取目录（与会话输入框的模型选择器、Subagent 设置卡片同一数据源）。此前版本误用会话级客户端服务 `modelDirectories`——动态插件的守卫上下文不暴露未在 `inject` 声明的服务（读取即抛错被捕获），下拉因此只剩"跟随会话路由"一个选项。

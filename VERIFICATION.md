@@ -1,6 +1,32 @@
 # 验证记录
 
-验证日期：2026-10-15 至 2026-10-16；最新插件版本：0.1.2；DSH 版本：0.2.0-rc.2。
+最新验收：2026-10-19；源码/热引擎版本：0.1.12；桌面 DSH：0.2.1-rc.2。下方保留此前版本的历史记录，旧章节中的“当前”仅指当次验收。
+
+## 2026-10-19 审查请求内部重试（通过，附验收边界）
+
+实现提交：`2b254a2`。源码新增 [src/reviewer-retry.js](src/reviewer-retry.js)，只包裹 reviewer 的直接 LLM 请求，不包裹 gate、next、审批或原工具体；保留原 policy 和 stable guard 的最终授权检查。
+
+### 机检与独立复核
+
+- `npm run check`：**139 tests / 139 pass / 0 fail / 0 cancelled**，退出码 0，约 6 秒。输出保存在 `_scratch/reviewer-retry-check-20261019.log`。
+- [test/reviewer-retry.test.js](test/reviewer-retry.test.js)：五类瞬时故障恢复、准确四次请求上限、±20% 抖动、Retry-After 合法/无效/超限值、真实 deny/协议错误不重试、aborted finish、取消/清理 timer 和 listener、并发独立预算、同一冻结请求、失败 partial 及完整 allow JSON 丢弃、cleanup 异常优先级。
+- [test/hot-guard.test.js](test/hot-guard.test.js) 的新增真实 Cordis + ToolRuntime + HotEngine 链：两次 TIMEOUT 后第三次成功，原 body=1、ask=0；持续失败 requests=4、body=0、ask=0，无风险凭据；退避期间取消及 engine fiber dispose 立即停止旧请求；新引擎不复活旧调用；重试期间指令变化后返回 `AUTO_REVIEW_CONTEXT_CHANGED`、body=0。
+- [test/llm-runtime-retry.test.js](test/llm-runtime-retry.test.js)：隔离进程中启动只绑定 loopback 临时端口的 HTTP 夹具，使用真实 `LlmRuntime` 及测试 adapter。HTTP 503 两次后成功（3 请求）；HTTP 429 耗尽（4 请求，保留 status 与 providerRetryAfterMs）；HTTP 401 仅一次。测试收尾关闭连接/服务并处置 Cordis 实例，不向外部 provider 发送数据。
+- 独立只读子代理亲自运行 reviewer-retry + hot-guard：**58/58 pass**；另以内存实验验证异步 cleanup 完成后才重试、cleanup 失败不能被 TIMEOUT 掩盖、cleanup 期间取消无额外请求、5 种非允许名单码不重试。未发现需返工问题。
+- 本机依赖为 DSH `0.2.0-rc.2`；同时 Inspect 当前桌面 `0.2.1-rc.2` 的 `llm.stream`、`llm/stream` 和 `LlmFailure` 契约，确认 terminal error/aborted、结构化 code 与 providerRetryAfterMs 字段一致。隔离运行时验证不冒充所有新版内部接口的测试。
+- `npm pack --ignore-scripts --json --pack-destination dist` 退出码 0；[dist/dsh-risk-first-approval-0.1.12.tgz](dist/dsh-risk-first-approval-0.1.12.tgz) 共 12 个文件，实查清单含 `src/reviewer-retry.js`、`src/upstream-review.js` 和新版本 manifest，SHA-1 为 `aefd8c6d87097db85cdf1a292b70eb535aeec3a4`。未重新安装 fallback，也未执行 lifecycle scripts。
+
+### 当前桌面生效证据
+
+- 原有 HMR 实测报告 `_scratch/hmr-state.json`：PID **69655** 未变；`guardId=3d2604fc-d14d-4d2a-8a9b-1fa6c7f50a46` 未变；新 `engineGeneration=6e9fb3d1-7347-466d-8553-97663848d0bf`，`engineBuild=risk-first-0.1.12-hot-retry`，`engineReady=true`、`guardReady=true`，ready 时间 `2026-10-19T01:40:29.900Z`。
+- 仍是原有 stable guard + 热引擎接线，没有移除/重装 Auto owner、改权限模式或刷新客户端；引擎重载窗口仍按既有设计失败关闭。本轮发生过一次 `AUTO_REVIEW_RELOADING`，等待就绪后正常继续，未绕过守卫。
+- 生产包 fallback 仍为已安装且被 dev 行覆盖的 `0.1.11`；本次源码/打包产物为 `0.1.12`，桌面生效来自原有 source watcher，不宣称 fallback 已升级。
+
+### 未执行项与清场
+
+- 未向在线会话注入真实断网，也未对外部商用 provider 发起故障注入请求。原拟临时安装 Host 诊断 bundle 的操作被 Auto 审查以 profile-wide 范围拒绝；**工具 body 未执行**，随后改用上述隔离 loopback 端到端验证，没有换工具绕过安装或请求人工跳过审查。
+- Inspect 查询 `dsh-reviewer-retry-runtime-20261019`：entries=[]、total=0，确认该诊断插件未挂载。候选夹具源码留在项目 `_scratch/retry-runtime-20261019/`，未安装、无新增工具或权限修改。它是一次性测试夹具，省略了图标/本地化资源，不作为正式插件交付。
+- 没有 UI 改动，不声称浏览器端故障注入或新 UI 验收；当前验收依据为代码、真实隔离执行链、独立复核与已加载热引擎状态。
 
 ## 2026-10-16 免重启热更新接线与实测
 
