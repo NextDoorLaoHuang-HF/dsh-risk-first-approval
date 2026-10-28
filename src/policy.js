@@ -46,12 +46,20 @@ export function createRiskFirstPolicy(ctx, classify, { now = Date.now, uuid = ra
     if (!definition || !schema || typeof schema.description !== 'string' || !schema.parameters) {
       throw new Error('risk-first: exact tool definition/schema is unavailable');
     }
-    // A new user/parent/project instruction invalidates a previous intent.
-    // Runtime snapshots and tool results do not grant or renew any authority.
-    const instructions = exec.agent.session.snapshotEvents().filter(event => {
+    // Question settlements may contain a refusal/revocation too. Conservatively
+    // invalidate old intents on them, even if the reviewer cannot admit that
+    // particular settlement as authority. This never grants or renews permission.
+    const events = exec.agent.session.snapshotEvents();
+    const questionCalls = new Set(events.filter(event => event.type === 'tool/call' &&
+      event.data.name === 'ask_user_question').map(event =>
+      `${event.data.turn}\0${event.data.step}\0${event.data.callId}`));
+    const instructions = events.filter(event => {
+      if (event.type === 'tool/result') return questionCalls.has(
+        `${event.data.turn}\0${event.data.step}\0${event.data.message.toolCallId}`);
       if (event.type !== 'user/message') return false;
       const source = event.data.source;
       return source?.kind === 'agent-instructions' || source?.kind === 'agent-message' ||
+        source?.kind === 'user-question-reply' ||
         (source?.kind === 'user' && typeof source.rpcId === 'string');
     }).map(event => event.seq);
     return {

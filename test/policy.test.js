@@ -95,6 +95,27 @@ test('new instruction invalidates an already armed intent', async () => {
   f.events.push({ seq: 10, type: 'user/message', data: { source: { kind: 'agent-instructions' } } });
   assert.equal((await f.gate()).kind, 'deny');
 });
+for (const kind of ['native-answer', 'continued-reply']) {
+  for (const armed of [false, true]) test(`${kind} invalidates ${armed ? 'armed intent' : 'pending ticket'} without granting permission`, async () => {
+    const f = fixture();
+    f.events.push({ seq: 0, type: 'tool/call', data: { turn: 1, step: 1, name: 'ask_user_question', callId: 'q1' } });
+    const id = f.ticket(await f.gate());
+    if (armed) await f.arm(id);
+    f.events.push(kind === 'native-answer'
+      ? { seq: 1, type: 'tool/result', data: { turn: 1, step: 1, message: { toolCallId: 'q1' } } }
+      : { seq: 1, type: 'user/message', data: { source: { kind: 'user-question-reply', callId: 'q1' } } });
+    if (armed) assert.equal((await f.gate()).kind, 'deny');
+    else assert.equal((await f.arm(id)).status, 'not_armed');
+    assert.equal(f.nextCalls(), 0);
+  });
+}
+
+test('unrelated tool output does not invalidate an intent or become authorization', async () => {
+  const f = fixture(); await f.arm(f.ticket(await f.gate()));
+  f.events.push({ seq: 0, type: 'tool/result', data: { turn: 1, step: 1, message: { toolCallId: 'web1' } } });
+  assert.equal((await f.gate()).kind, 'ask');
+});
+
 test('replaced tool implementation or changed schema cannot reuse a ticket', async () => {
   const f = fixture(); const id = f.ticket(await f.gate());
   f.registry.set('bash', { ...f.definition });

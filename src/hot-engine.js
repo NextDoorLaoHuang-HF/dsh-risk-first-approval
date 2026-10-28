@@ -17,7 +17,7 @@ function probe(entry) {
   } catch { /* diagnostics must never break the engine */ }
 }
 
-export const BUILD = 'risk-first-0.1.12-hot-retry';
+export const BUILD = 'risk-first-0.1.13-question-answers';
 export const Config = ReviewerRouteConfig;
 export const name = 'risk-first-hot-engine';
 export const inject = ['approval', 'llm', 'permissionPresets', 'tools'];
