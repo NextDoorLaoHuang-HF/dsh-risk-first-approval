@@ -1,6 +1,25 @@
 # 验证记录
 
-最新验收：2026-10-19；源码/热引擎版本：0.1.12；桌面 DSH：0.2.1-rc.2。下方保留此前版本的历史记录，旧章节中的“当前”仅指当次验收。
+最新机检：2026-10-28；候选源码版本：0.1.13；在线热引擎仍为 0.1.12。下方保留此前版本的历史记录，旧章节中的“当前”仅指当次验收。
+
+## 2026-10-28 原生问题答复授权证据（隔离分支，未部署）
+
+实现提交：`4081ae3`，分支 `fix/trusted-question-answers`。隔离 worktree 不在在线 HMR 监听路径内；没有改动 profile、Auto owner、审批模式或生产系统。
+
+### 机检证据
+
+- `npm run check`：**177 tests / 177 pass / 0 fail / 0 cancelled**，退出码 0，约 6.6 秒。
+- [test/question-answers.test.js](test/question-answers.test.js)：原始可见 native 调用与答复唯一配对、问题前 header/schema、已选说明、custom、拒绝/跳过、后续撤销顺序及项目约束；拒绝普通工具冒充、错误/待定结果、ID/选项不匹配、重复答案/选项/JSON 键、非原始/不可见/继承结果、重复结果与单选越界。
+- 同文件真实 **Cordis + Tools + ApprovalService + classifyRisk** 执行链：deterministic reviewer 从冻结请求中读出配对答复后，合成 body=1、prompt=0；pending 对照 body=0、prompt=0。该测试验证数据及执行链，不冒充真实模型的语义判断。
+- [test/policy.test.js](test/policy.test.js)：新增 native 问题结果和 continued reply 使旧 ticket/armed intent 失效的四个用例，以及普通输出不改变 intent 的对照；完整回归保留 high 单次人工审批、never、独立 guard、取消、上下文变化及跨引擎 lease 等边界。
+- `npm pack --ignore-scripts --dry-run --json --cache ./_scratch/npm-cache`：退出码 0，13 个分发文件，含 `src/question-answers.js`；未执行 install/build scripts。第一次默认 npm cache dry-run 因本机 `~/.npm` 权限返回 EPERM；改用 worktree 自有 cache 后通过，未修改系统目录权限。
+
+### 支持与验证边界
+
+- 只接纳 **native 前台成功答复**。超时 continued reply、PTC 问题答复、继承、压缩/改写后的结果目前不作为授权，仍失败关闭；continued reply 仅保守使旧 intent 失效。
+- 只提升经过配对的实际答案，不把普通工具输出、问题措辞或代理记账提升为人类授权。仍由 reviewer 判断每次目标/效果/范围；本版不实现授权 TTL 缓存、自动重试生产写或跨会话授权复用。
+- 信任 Session、Host 插件和工具注册；历史事件无工具包签名，不宣称可抵御恶意 Host 替换同名工具。
+- 未向真实 provider 发送原会话内容，未对生产环境执行测试，无 UI 改动，也未热替换当前桌面。独立安全复核结论另补。
 
 ## 2026-10-19 审查请求内部重试（通过，附验收边界）
 

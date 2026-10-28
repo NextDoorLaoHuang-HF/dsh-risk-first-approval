@@ -1,6 +1,19 @@
 # DSH Risk-first Approval
 
-独立、可移除的 Auto 审批插件，当前源码版本 `0.1.12`，当前桌面 DSH `0.2.1-rc.2`（peer 依赖改为 `^0.2.0-rc.2` 区间；0.1.7 及更早的精确版本钉会在 DSH 升级后使整个 patch 被 `incompatible-version` 拒载——行消失、卡片消失、stock auto-review 接管）。
+独立、可移除的 Auto 审批插件，当前源码版本 `0.1.13`，当前桌面 DSH `0.2.1-rc.2`（peer 依赖改为 `^0.2.0-rc.2` 区间；0.1.7 及更早的精确版本钉会在 DSH 升级后使整个 patch 被 `incompatible-version` 拒载——行消失、卡片消失、stock auto-review 接管）。
+
+## 选择框答复进入审核上下文（0.1.13）
+
+修复真实用户通过 `ask_user_question` 勾选了生产步骤，但 reviewer 只看到工具调用、看不到答复，继而重复要求批准的问题。只新增授权**证据**，不新增默认放行规则或跨操作审批缓存。
+
+- 仅提取本会话可见、原始且成功的 **native** 问题结果，按 turn/step/callId 唯一配对可见调用，并核对调用前的 request/header 问题工具 schema。问题与答复必须属于本会话，不能从 fork 继承或压缩摘要恢复授权。
+- 校验整批问题 ID、选项、单/多选及 custom 格式；只将真实已选项及其说明、custom 答复作为 `human-answer` 交给 reviewer。未选项、推荐标签、问题措辞本身、跳过、pending、失败、普通工具输出与代理自述都不是批准。拒绝和撤销按原文保留。
+- reviewer 仍须逐次匹配动作、环境、目标、次数与范围，遵守项目约束及后续撤销；high 仍必须走精确调用的单次人工审批，`never`、独立 guard 和 IDE 自身确认不变。
+- 新 native 问题结果或 admitted `user-question-reply` 会使旧 risk ticket/intent 失效；这只是保守撤销，不会授予权限。
+- **支持边界**：本版仅将 native 前台成功答复作为授权证据。PTC 问题答复、超时后的 continued reply、压缩/改写结果不提升为授权，缺证时仍需用户确认。完整端到端的目标范围判断仍由 reviewer 执行，不声称以关键词匹配取代风险审核。
+- **信任边界**：Session 日志、Host 插件和工具注册可信；日志没有工具包签名，本补丁不能鉴别被恶意 Host 插件替换的同名工具。它防止模型通过普通输出或自述伪造批准，不是对不可信 Host 插件的隔离沙箱。
+
+0.1.13 在隔离 worktree 验证；**没有修改当前 profile、切换会话权限或热替换在线引擎**。部署应另行安排，不能把源码提交当作当前桌面已生效。
 
 ## 审查请求瞬时故障恢复（0.1.12）
 
