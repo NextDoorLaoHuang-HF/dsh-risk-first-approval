@@ -54,6 +54,15 @@ test('real multi-select answer is paired with selected scope, not assistant clai
   assert.ok(Object.isFrozen(result[0].answers));
 });
 
+test('six-item release checklist preserves exact Recommended labels and all selected descriptions', () => {
+  const f = fixture();
+  const labels = ['Backup and probe', 'Deploy abc123', 'Two indexes and timer', 'Enable setup', 'Upload package', 'Controlled smoke'];
+  const options = labels.map((label, index) => ({ label: `${label} (Recommended)`, description: `Only approved release scope ${index + 1} in env-prod.` }));
+  f.questionArgs.questions[0].options = options; f.setQuestions(f.questionArgs);
+  f.setAnswer({ answers: [{ id: 'release', selected: options.map(option => option.label) }] });
+  assert.deepEqual(receipts(f)[0].answers[0].selected, options);
+});
+
 for (const [name, mutate] of [
   ['pending', f => f.setAnswer({ pending: true, callId: 'q1' })],
   ['tool error', f => { f.events[6].data.message.isError = true; }],
