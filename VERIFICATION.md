@@ -8,7 +8,7 @@
 
 ### 机检证据
 
-- `npm run check`：**177 tests / 177 pass / 0 fail / 0 cancelled**，退出码 0，约 6.6 秒。
+- `npm run check`：**179 tests / 179 pass / 0 fail / 0 cancelled**，退出码 0，约 6.2 秒；另补 native/continued 答复在审核进行期间到达时的旧决策失效回归。
 - [test/question-answers.test.js](test/question-answers.test.js)：原始可见 native 调用与答复唯一配对、问题前 header/schema、已选说明、custom、拒绝/跳过、后续撤销顺序及项目约束；拒绝普通工具冒充、错误/待定结果、ID/选项不匹配、重复答案/选项/JSON 键、非原始/不可见/继承结果、重复结果与单选越界。
 - 同文件真实 **Cordis + Tools + ApprovalService + classifyRisk** 执行链：deterministic reviewer 从冻结请求中读出配对答复后，合成 body=1、prompt=0；pending 对照 body=0、prompt=0。该测试验证数据及执行链，不冒充真实模型的语义判断。
 - [test/policy.test.js](test/policy.test.js)：新增 native 问题结果和 continued reply 使旧 ticket/armed intent 失效的四个用例，以及普通输出不改变 intent 的对照；完整回归保留 high 单次人工审批、never、独立 guard、取消、上下文变化及跨引擎 lease 等边界。

@@ -191,6 +191,17 @@ test('new human instruction arriving during review prevents stale execution', as
   } });
   assert.equal((await f.gate()).info.code, 'AUTO_REVIEW_CONTEXT_CHANGED'); assert.equal(f.nextCalls(), 0);
 });
+for (const kind of ['native-answer', 'continued-reply']) test(`${kind} arriving during review prevents stale execution`, async () => {
+  let f; f = fixture({ classify: async () => {
+    f.events.push(kind === 'native-answer'
+      ? { seq: 1, type: 'tool/result', data: { turn: 1, step: 1, message: { toolCallId: 'q1' } } }
+      : { seq: 1, type: 'user/message', data: { source: { kind: 'user-question-reply', callId: 'q1' } } });
+    return low;
+  } });
+  f.events.push({ seq: 0, type: 'tool/call', data: { turn: 1, step: 1, name: 'ask_user_question', callId: 'q1' } });
+  assert.equal((await f.gate()).info.code, 'AUTO_REVIEW_CONTEXT_CHANGED'); assert.equal(f.nextCalls(), 0);
+});
+
 test('intent expiring during a long review never opens a dialog', async () => {
   let f; f = fixture({ classify: async () => { f.tick(120001); return medium; } });
   await f.arm(f.ticket(await f.gate()));
