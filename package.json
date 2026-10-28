@@ -21,7 +21,7 @@
   "license": "MIT",
   "scripts": {
     "test": "node --test test/*.test.js",
-    "check": "node --check src/index.js && node --check src/policy.js && node --check src/upstream-review.js && node --check src/question-answers.js && node --check src/reviewer-retry.js && node --check src/hot-engine.js && node --test test/*.test.js"
+    "check": "node --check src/index.js && node --check src/policy.js && node --check src/upstream-review.js && node --check src/question-answers.js && node --check src/ask-user-schema.js && node --check src/reviewer-retry.js && node --check src/hot-engine.js && node --test test/*.test.js"
   },
   "dsh": {
     "bundle": {

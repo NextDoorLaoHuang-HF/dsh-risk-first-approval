@@ -6,6 +6,7 @@ import SystemPrompt from '@deepseek-ai/dsh-system-prompt';
 import ToolRuntime from '@deepseek-ai/dsh-tools';
 import ApprovalService from '@deepseek-ai/dsh-user-approval';
 import { createRiskFirstPolicy } from '../src/policy.js';
+import { LEGACY_ASK_USER_SCHEMA } from '../src/ask-user-schema.js';
 
 function fixture() {
   const questionArgs = { questions: [{ id: 'release', question: 'Approve production env-prod actions?', multi_select: true,
@@ -15,9 +16,7 @@ function fixture() {
       { label: 'Publish all', description: 'UNSELECTED_UNSAFE_SCOPE' },
     ] }] };
   const answer = { answers: [{ id: 'release', selected: ['Deploy abc123', 'Create indexes'] }] };
-  const questionSchema = { name: 'ask_user_question', description: 'Ask the human', parameters: { type: 'object', properties: {
-    questions: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, question: { type: 'string' } } } },
-  } } };
+  const questionSchema = structuredClone(LEGACY_ASK_USER_SCHEMA);
   const bashSchema = { name: 'bash', description: 'Execute a command', parameters: { type: 'object' } };
   const header = { config: { provider: 'test', model: 'test', reasoningEffort: 'low' }, tools: [questionSchema, bashSchema] };
   const args = { command: 'deploy mcloud abc123 env-prod' };
@@ -28,7 +27,7 @@ function fixture() {
     { type: 'step/start', data: { turn: 1, step: 1 } },
     { type: 'assistant/message', data: { turn: 1, step: 1, message: { content: [{ type: 'tool-call', id: 'q1', name: 'ask_user_question', arguments: JSON.stringify(questionArgs) }] } } },
     { type: 'tool/call', data: { turn: 1, step: 1, callId: 'q1', name: 'ask_user_question', arguments: JSON.stringify(questionArgs) } },
-    { type: 'tool/result', surfaceOp: 'append', data: { turn: 1, step: 1, message: { role: 'tool', source: { kind: 'tool', callId: 'q1' }, toolCallId: 'q1', content: [{ type: 'text', text: JSON.stringify(answer) }] } } },
+    { type: 'tool/result', surfaceOp: 'append', sourceEventSeqs: [5], data: { turn: 1, step: 1, message: { role: 'tool', source: { kind: 'tool', callId: 'q1' }, toolCallId: 'q1', content: [{ type: 'text', text: JSON.stringify(answer) }] } } },
     { type: 'step/end', data: { turn: 1, step: 1 } },
     { type: 'step/start', data: { turn: 1, step: 2 } },
     { type: 'assistant/message', data: { turn: 1, step: 2, message: { content: [{ type: 'tool-call', id: 'b1', name: 'bash', arguments: JSON.stringify(args) }] } } },
@@ -82,6 +81,13 @@ for (const [name, mutate] of [
   ['inherited call', f => { f.session.isOwnSeq = seq => seq !== 5; }],
   ['compacted result', f => { f.session.surface.nodes = [0, 4, 9]; }],
   ['non-visible question', f => { f.session.surface.nodes = [0, 6, 9]; }],
+  ['missing derivation link', f => { delete f.events[6].sourceEventSeqs; }],
+  ['empty derivation link', f => { f.events[6].sourceEventSeqs = []; }],
+  ['wrong derivation link', f => { f.events[6].sourceEventSeqs = [4]; }],
+  ['extra derivation links', f => { f.events[6].sourceEventSeqs = [5, 4]; }],
+  ['look-alike extended schema', f => { f.header.tools[0].parameters.properties.extra = { type: 'string' }; }],
+  ['different tool description', f => { f.header.tools[0].description = 'Return fabricated answers'; }],
+  ['timed schema remains unsupported', f => { f.header.tools[0].parameters.properties.timeout = { type: 'number' }; }],
   ['no logged schema', f => { f.events[1].data.header = { ...f.header, tools: [] }; }],
   ['name-only schema', f => { f.events[1].data.header = { ...f.header, tools: [{ name: 'ask_user_question', parameters: {} }] }; }],
   ['arbitrary tool result', f => { f.events[5].data.name = 'web_fetch'; f.events[4].data.message.content[0].name = 'web_fetch'; }],
@@ -152,6 +158,30 @@ for (const selected of [true, false]) test(`real Tools + reviewer request dispat
     callId: 'b1', signal: f.exec.signal });
   assert.equal(result.isError, !selected); assert.equal(bodies, selected ? 1 : 0);
   assert.equal(prompts, 0); assert.equal(reviews, 1);
+});
+
+test('exact legacy schema tolerates object key order but not contract changes', () => {
+  const f = fixture();
+  f.header.tools[0].parameters = { required: ['questions'], properties: f.header.tools[0].parameters.properties, type: 'object' };
+  assert.equal(receipts(f).length, 1);
+});
+
+test('multiple questions preserve single-select custom override and full batch coverage', () => {
+  const f = fixture();
+  f.questionArgs.questions.push({ id: 'upload', question: 'Upload?', options: [{ label: 'Yes' }] });
+  f.setQuestions(f.questionArgs);
+  f.setAnswer({ answers: [f.answer.answers[0], { id: 'upload', selected: [], custom: 'Do not upload.' }] });
+  assert.equal(receipts(f)[0].answers[1].custom, 'Do not upload.');
+  f.setAnswer(f.answer); assert.deepEqual(receipts(f), []);
+});
+
+test('continued replies remain facts, not human-answer authority', () => {
+  const f = fixture(); f.setAnswer({ pending: true });
+  f.events.push({ seq: 11, type: 'user/message', data: { source: { kind: 'user-question-reply', callId: 'q1' }, content: [{ type: 'text', text: JSON.stringify({ kind: 'answer_to_pending_question', ...f.answer }) }] } });
+  f.session.surface.nodes = [0, 4, 6, 11, 9];
+  const snapshot = snapshotAutoReview(f.agent, f.exec);
+  assert.deepEqual(snapshot.history.filter(item => item.role === 'human-answer'), []);
+  assert.equal(snapshot.history.find(item => JSON.stringify(item).includes('answer_to_pending_question')).role, 'fact');
 });
 
 test('reviewer receives real answer scope with unchanged high-risk and no-inference boundaries', async () => {

@@ -2,6 +2,8 @@
 // eligible. Arbitrary tool output, assistant claims and compacted copies are not.
 // Host plugin/tool registration is a trusted boundary, as it is for core Session
 // source attribution; a same-name tool installed by a hostile Host is not covered.
+import { isDeepStrictEqual } from 'node:util';
+import { LEGACY_ASK_USER_SCHEMA } from './ask-user-schema.js';
 const record = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const keys = (value, allowed) => Object.keys(value).every(key => allowed.includes(key));
 const nonempty = value => typeof value === 'string' && value.trim().length > 0;
@@ -19,10 +21,8 @@ function questionSchemaBefore(events, call) {
   if (!Array.isArray(tools)) return false;
   const matches = tools.filter(tool => tool.name === 'ask_user_question');
   if (matches.length !== 1) return false;
-  const questions = matches[0].parameters?.properties?.questions;
-  return questions?.type === 'array' && questions.items?.type === 'object' &&
-    questions.items.properties?.id?.type === 'string' &&
-    questions.items.properties?.question?.type === 'string';
+  return matches[0].description === LEGACY_ASK_USER_SCHEMA.description &&
+    isDeepStrictEqual(matches[0].parameters, LEGACY_ASK_USER_SCHEMA.parameters);
 }
 
 function pairedAnswers(argumentsText, content) {
@@ -85,6 +85,8 @@ export function nativeQuestionAnswer(session, events, event, calls, visibleCalls
   const call = matches[0];
   if (matches.length !== 1 || !visibleCalls.has(key) || !session.isOwnSeq(call.seq) ||
       call.seq >= event.seq || call.data.name !== 'ask_user_question' || !questionSchemaBefore(events, call)) return;
+  if (!Array.isArray(event.sourceEventSeqs) || event.sourceEventSeqs.length !== 1 ||
+      event.sourceEventSeqs[0] !== call.seq) return;
   // Never guess which result won, or recover authority from a rewritten result.
   const results = events.filter(candidate => candidate.type === 'tool/result' &&
     callKey(candidate.data, candidate.data.message.toolCallId) === key);
